@@ -3,23 +3,26 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch: # 수동 실행 버튼 추가
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 컨테이너를 사용하면 SDK/NDK 수동 설치 스크립트가 필요 없습니다.
     container:
-      [span_5](start_span)[span_6](start_span)image: kivy/buildozer:latest # 모든 SDK/NDK가 포함된 이미지[span_5](end_span)[span_6](end_span)
+      image: kivy/buildozer:latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Build APK (debug)
+      - name: Build APK with Buildozer
         run: |
-          # [span_7](start_span)Cython 및 PATH 설정이 이미지 내에 완료되어 있음[span_7](end_span)
+          # Cython 및 경로 설정이 이미 완료된 이미지를 사용합니다.
           buildozer -v android debug
 
       - name: Upload APK
-        [span_8](start_span)uses: actions/upload-artifact@v4 # v3 대신 v4 사용 권장[span_8](end_span)
+        uses: actions/upload-artifact@v4
         with:
-          name: apk
+          name: python-apk
           path: bin/*.apk
