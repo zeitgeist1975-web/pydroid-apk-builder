@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK (Fully Automated)
 
 on:
   push:
@@ -13,41 +13,64 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip build-essential git python3 python3-dev \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev libsqlite3-dev openjdk-17-jdk zip unzip
+            build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
+            libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev \
+            libavformat-dev libavcodec-dev zlib1g-dev libsqlite3-dev \
+            openjdk-17-jdk zip unzip cmake autoconf automake libtool \
+            pkg-config libffi-dev libssl-dev
 
       - name: Install Buildozer and Cython
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install --user buildozer cython==0.29.33
+          python3 -m pip install buildozer cython==0.29.33
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Build APK (Fully Automated)
+      - name: Cache Buildozer SDK/NDK
+        uses: actions/cache@v3
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      - name: Configure buildozer.spec and Build
         run: |
-          # 1. 환경 변수 강제 설정 (AIDL 및 SDK 도구 인식용)
-          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
-          export PATH=$PATH:$HOME/.local/bin:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
-          
-          # 2. SDK 라이선스 자동 승인 강제 적용
-          export APP_ANDROID_ACCEPT_SDK_LICENSE=1
-          
-          # 3. buildozer.spec이 없는 경우 자동 생성 및 기본 설정 수정
+          # 1. buildozer.spec 파일이 없으면 초기화
           if [ ! -f buildozer.spec ]; then
             buildozer init
-            sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           fi
 
+          # 2. buildozer.spec 자동 수정 (이미 파일이 있어도 설정 변경)
+          
+          # [라이선스 승인 설정]
+          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
+          
+          # [라이브러리(requirements) 설정]
+          # 필요한 라이브러리를 아래에 추가하세요 (예: python3,kivy,requests,certifi)
+          sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
+          
+          # [권한(permissions) 설정]
+          # 필요한 권한을 아래에 추가하세요 (예: INTERNET)
+          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE/' buildozer.spec
+
+          # 3. Android SDK 라이선스 사전 강제 승인
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          
           # 4. 빌드 실행 (yes를 통해 모든 대화형 질문 자동 통과)
-          # --requirements 파라미터를 추가하여 라이브러리 누락 방지
           yes | buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs='-Xmx2048m'"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
