@@ -1,4 +1,4 @@
-name: Build APK (Ultimate Performance Mode)
+name: Build APK (Spec Fixed)
 
 on:
   push:
@@ -8,83 +8,65 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 전체 빌드 제한 시간을 넉넉히 1시간으로 설정
-    timeout-minutes: 60
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. 디스크 용량 확보 (약 30GB 이상 확보)
       - name: Free Disk Space
         run: |
           sudo docker image prune -a -f
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
-          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
 
-      # 2. Swap 에러 해결 (Text file busy 방지)
       - name: Setup Swap
         run: |
           sudo swapoff -a || true
           sudo rm -f /swapfile
-          # dd를 사용하여 안정적으로 4GB 가상 메모리 생성
           sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
-          free -h
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
+          sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev \
             libavformat-dev libavcodec-dev zlib1g-dev libsqlite3-dev \
             openjdk-17-jdk zip unzip cmake autoconf automake libtool \
             pkg-config libffi-dev libssl-dev gettext
 
-      - name: Install Buildozer and Cython
+      - name: Install Buildozer
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install buildozer cython==0.29.33
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      # 3. [핵심] 캐싱 설정 (이미 성공한 부분은 건너뜀)
-      - name: Cache Buildozer
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: ${{ runner.os }}-buildozer-v4-${{ hashFiles('buildozer.spec') }}
-
-      - name: Configure buildozer.spec
+      - name: Configure and Fix buildozer.spec
         run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-          fi
-          # 라이선스 및 필수 설정 강제 업데이트
-          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
-          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE/' buildozer.spec
+          if [ ! -f buildozer.spec ]; then buildozer init; fi
+          # 잘못된 버전 정보들을 강제로 올바른 조합(API 33, NDK 25b)으로 교체
           sed -i 's/^[# ]*android.api =.*/android.api = 33/' buildozer.spec
           sed -i 's/^[# ]*android.ndk =.*/android.ndk = 25b/' buildozer.spec
+          sed -i 's/^[# ]*android.minapi =.*/android.minapi = 21/' buildozer.spec
+          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          # requirements 자동 업데이트
+          sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
 
       - name: Pre-accept SDK Licenses
         run: |
           mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
           echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56263434d92419a93602ee9f458440c3091b291\n24333f8a63b6825ea9d5513f8e074e7540a1d006" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
 
-      # 4. 빌드 실행 (clean 절대 하지 마세요!)
       - name: Build APK
         run: |
-          # clean을 빼고 바로 빌드하여 리소스를 아낍니다.
+          # 절대 'clean' 하지 마세요! 바로 빌드합니다.
           yes y | buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
@@ -93,5 +75,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: python-apk
+          name: my-app-apk
           path: bin/*.apk
