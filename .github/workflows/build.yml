@@ -1,4 +1,4 @@
-name: Build APK (Fix Version Error)
+name: Build APK (Fixed Indentation)
 
 on:
   push:
@@ -14,62 +14,63 @@ jobs:
 
       - name: Free Disk Space
         run: |
-          [span_7](start_span)sudo docker image prune -a -f[span_7](end_span)
-          [span_8](start_span)sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc[span_8](end_span)
-          [span_9](start_span)sudo apt-get clean[span_9](end_span)
+          sudo docker image prune -a -f
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
 
       - name: Setup Swap
         run: |
-          [span_10](start_span)sudo swapoff -a || true[span_10](end_span)
-          [span_11](start_span)sudo rm -f /swapfile[span_11](end_span)
-          [span_12](start_span)sudo dd if=/dev/zero of=/swapfile bs=1M count=4096[span_12](end_span)
-          [span_13](start_span)sudo chmod 600 /swapfile[span_13](end_span)
-          [span_14](start_span)sudo mkswap /swapfile[span_14](end_span)
-          [span_15](start_span)sudo swapon /swapfile[span_15](end_span)
+          sudo swapoff -a || true
+          sudo rm -f /swapfile
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          [span_16](start_span)python-version: '3.10'[span_16](end_span)
+          python-version: '3.10'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          [span_17](start_span)java-version: '17'[span_17](end_span)
-          [span_18](start_span)distribution: 'temurin'[span_18](end_span)
+          java-version: '17'
+          distribution: 'temurin'
 
       - name: Install system dependencies
         run: |
-          [span_19](start_span)sudo apt-get update[span_19](end_span)
+          sudo apt-get update
           sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
             libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
-            [span_20](start_span)pkg-config autoconf libtool zip unzip[span_20](end_span)
+            pkg-config autoconf libtool zip unzip
 
       - name: Install Python dependencies
         run: |
-          [span_21](start_span)python -m pip install --upgrade pip[span_21](end_span)
-          [span_22](start_span)pip install "cython<3.0.0" buildozer[span_22](end_span)
+          python -m pip install --upgrade pip
+          pip install "cython<3.0.0" buildozer
 
       - name: Build with Buildozer
         env:
-          [span_23](start_span)JAVA_OPTS: "-Xmx2048m"[span_23](end_span)
-          [span_24](start_span)GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"[span_24](end_span)
+          JAVA_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"
         run: |
-          # 1. [span_25](start_span)이전 빌드 초기화[span_25](end_span)
-          [span_26](start_span)buildozer android clean || true[span_26](end_span)
+          # 1. 이전 빌드 초기화 및 캐시 정리
+          buildozer android clean || true
           
-          # 2. [span_27](start_span)spec 파일 핵심 오류(Version 누락 등) 자동 보정[span_27](end_span)
-          [span_28](start_span)sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec[span_28](end_span)
-          [span_29](start_span)sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec[span_29](end_span)
-          [span_30](start_span)sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec[span_30](end_span)
+          # 2. spec 파일의 핵심 오류(Version 누락, 아키텍처 등) 자동 보정
+          sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec
+          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
           
-          # 3. 빌드 실행
-          [span_31](start_span)yes y | buildozer -v android debug[span_31](end_span)
+          # 3. 실제 빌드 진행
+          yes y | buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: my-app-apk
           path: bin/*.apk
+ㅡ
