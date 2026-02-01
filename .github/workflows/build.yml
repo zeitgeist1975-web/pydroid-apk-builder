@@ -1,4 +1,4 @@
-name: Build APK (Fully Automated)
+name: Build APK (Final Boss Version)
 
 on:
   push:
@@ -34,39 +34,43 @@ jobs:
           python3 -m pip install buildozer cython==0.29.33
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Cache Buildozer SDK/NDK
+      - name: Cache Buildozer
         uses: actions/cache@v3
         with:
           path: .buildozer
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
 
-      - name: Configure buildozer.spec and Build
+      - name: Configure and Fix buildozer.spec
         run: |
-          # 1. buildozer.spec 파일이 없으면 초기화
+          # 1. spec 파일 없으면 생성
           if [ ! -f buildozer.spec ]; then
             buildozer init
           fi
 
-          # 2. buildozer.spec 자동 수정 (이미 파일이 있어도 설정 변경)
-          
-          # [라이선스 승인 설정]
+          # 2. 필수 설정 자동 교체 (이미 있으면 덮어쓰기)
+          # 라이선스 승인
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
           
-          # [라이브러리(requirements) 설정]
-          # 필요한 라이브러리를 아래에 추가하세요 (예: python3,kivy,requests,certifi)
+          # [중요] requirements 설정: 사용하시는 라이브러리를 여기에 추가하세요.
           sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
           
-          # [권한(permissions) 설정]
-          # 필요한 권한을 아래에 추가하세요 (예: INTERNET)
-          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE/' buildozer.spec
-
-          # 3. Android SDK 라이선스 사전 강제 승인
-          mkdir -p ~/.android
-          touch ~/.android/repositories.cfg
+          # [중요] permissions 설정: 인터넷 권한 등
+          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE/' buildozer.spec
           
-          # 4. 빌드 실행 (yes를 통해 모든 대화형 질문 자동 통과)
+          # 3. 안드로이드 SDK/NDK 버전 고정 (가장 안정적인 조합)
+          sed -i 's/^[# ]*android.api =.*/android.api = 33/' buildozer.spec
+          sed -i 's/^[# ]*android.ndk =.*/android.ndk = 25b/' buildozer.spec
+
+      - name: Pre-accept Android SDK Licenses
+        run: |
+          # 빌드가 멈추는 주범인 라이선스 질문을 미리 통과시킵니다.
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56263434d92419a93602ee9f458440c3091b291\n24333f8a63b6825ea9d5513f8e074e7540a1d006" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo -e "84831b9409646a918e30573bab4c9c91346d8abd\n5046632204672908a1c814a0ec94751f357f12e2" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
+
+      - name: Build APK
+        run: |
+          # 'yes' 명령어로 남은 모든 질문에 강제 대답
           yes | buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
