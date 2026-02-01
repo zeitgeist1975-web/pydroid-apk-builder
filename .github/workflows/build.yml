@@ -1,4 +1,4 @@
-name: Build APK (Fixed Syntax)
+name: Build APK (Final Fix)
 
 on:
   push:
@@ -45,22 +45,24 @@ jobs:
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
             libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
-            [span_1](start_span)pkg-config autoconf libtool zip unzip[span_1](end_span)
+            pkg-config autoconf libtool zip unzip
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          [span_2](start_span)pip install "cython<3.0.0" buildozer[span_2](end_span)
+          pip install "cython<3.0.0" buildozer
 
       - name: Build with Buildozer
         env:
-          ANT_OPTS: "-Xmx2048m"
-          # 아래 줄(GRADLE_OPTS)에서 따옴표 중첩 에러가 자주 발생하므로 수정됨
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m" 
+          # Exit code 2 방지를 위해 메모리 할당을 더 명확하게 지정
+          JAVA_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"
         run: |
+          # 빌드 전 spec 파일 자동 교정
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
-          [span_3](start_span)yes y | buildozer -v android debug[span_3](end_span)
+          # 빌드 실행
+          yes y | buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
