@@ -1,4 +1,4 @@
-name: Build APK (Performance Optimized)
+name: Build APK (Ultimate Fix)
 
 on:
   push:
@@ -13,22 +13,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. 가상 머신 다이어트 (빌드 공간 확보 및 성능 향상)
+      # 1. 가상 머신 디스크 공간 최대 확보 (가장 확실한 방법)
       - name: Free Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
+          sudo docker image prune -a -f
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo apt-get clean
+          df -h # 남은 용량 확인
 
-      # 2. 가상 메모리(Swap) 추가 (NDK 압축 해제 시 튕김 방지)
+      # 2. 가상 메모리(Swap) 설정 (dd 방식으로 변경하여 'Text file busy' 에러 해결)
       - name: Setup Swap
         run: |
-          sudo fallocate -l 4G /swapfile
+          sudo swapoff -a || true
+          sudo rm -f /swapfile
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
+          free -h # 메모리 확인
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -51,15 +54,6 @@ jobs:
           python3 -m pip install buildozer cython==0.29.33
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      # 3. 캐시 설정 (성공 시 다음 빌드 속도 10배 향상)
-      - name: Cache Buildozer
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: ${{ runner.os }}-buildozer-v3-${{ hashFiles('buildozer.spec') }}
-
       - name: Configure buildozer.spec
         run: |
           if [ ! -f buildozer.spec ]; then
@@ -67,8 +61,14 @@ jobs:
           fi
           # 라이선스 및 필수 설정 자동 수정
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
+          
+          # [요청사항 반영] requirements 자동 설정 (사용자 라이브러리 포함)
           sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
+          
+          # [요청사항 반영] permissions 자동 설정
           sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE/' buildozer.spec
+          
+          # API 및 NDK 버전 고정 (안정성)
           sed -i 's/^[# ]*android.api =.*/android.api = 33/' buildozer.spec
           sed -i 's/^[# ]*android.ndk =.*/android.ndk = 25b/' buildozer.spec
 
@@ -79,8 +79,9 @@ jobs:
 
       - name: Build APK
         run: |
-          # yes 파이프라인 대신 --auto-accept-sdk-license 옵션이 있다면 좋으나, 
-          # 안정성을 위해 기존 yes 방식을 유지하되 버퍼 문제를 위해 y 문자만 전달
+          # 빌드 시작 전 불필요한 캐시 삭제로 공간 확보
+          buildozer android clean
+          # yes를 사용하여 모든 질문에 자동 응답
           yes y | buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
