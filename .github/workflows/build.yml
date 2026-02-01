@@ -1,4 +1,4 @@
-name: Build APK (Final Fix)
+name: Build APK (Fully Automated)
 
 on:
   push:
@@ -49,7 +49,8 @@ jobs:
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
             libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
-            pkg-config autoconf libtool zip unzip
+            pkg-config autoconf libtool zip unzip libncurses5-dev libgdbm-dev libnss3-dev \
+            libreadline-dev tk-dev libbz2-dev libltdl-dev
 
       - name: Install Python dependencies
         run: |
@@ -61,15 +62,23 @@ jobs:
           JAVA_OPTS: "-Xmx2048m"
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"
         run: |
-          # 1. 이전 빌드 초기화
+          # 1. 빌드 캐시 정리
           buildozer android clean || true
           
-          # 2. spec 파일 핵심 설정 강제 보정 (에러 방지용)
+          # 2. spec 파일 자동 보정 (사용자 요청 반영)
+          # 버전 설정
           sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec
+          # 아키텍처 설정
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          # 라이선스 자동 승인
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
           
+          # [핵심] 라이브러리 의존성(requirements) 자동 수정
+          # 기본 kivy와 함께 자주 쓰이는 requests, openssl 등을 포함하도록 설정합니다.
+          sed -i 's|^requirements =.*|requirements = python3,kivy==2.2.1,requests,certifi,urllib3,openssl,hostpython3|' buildozer.spec
+          
           # 3. 실제 빌드 실행
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:.
           yes y | buildozer -v android debug
 
       - name: Upload APK
