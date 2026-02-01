@@ -13,6 +13,134 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Echo test
+      - name: Install system dependencies
         run: |
-          echo "Build workflow loaded"
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk python3-pip unzip wget zip rsync
+
+      - name: Install Buildozer & Cython
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --user buildozer cython
+          # add local pip bin to PATH for subsequent steps
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Android SDK for Buildozer and accept licenses
+        env:
+          TARGET_SDK_ROOT: $RUNNER_TEMP/android-sdk
+          BOOZ_SDK_ROOT: $HOME/.buildozer/android/platform/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+        run: |
+          set -euo pipefail
+          echo "TARGET_SDK_ROOT=$TARGET_SDK_ROOT"
+          echo "BOOZ_SDK_ROOT=$BOOZ_SDK_ROOT"
+          mkdir -p "$TARGET_SDK_ROOT/cmdline-tools"
+          mkdir -p "$BOOZ_SDK_ROOT"
+          cd /tmp
+
+          # 1) try to extract a real download URL from developer.android.com
+          TOOL_URL=$(curl -sL https://developer.android.com/studio | \
+            grep -oE 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9_]+_latest.zip' | head -n1 || true)
+
+          # 2) fallback candidates if auto-detect fails
+          if [ -z "$TOOL_URL" ]; then
+            echo "Could not auto-detect commandlinetools URL. Trying fallbacks..."
+            FALLBACKS=(
+              "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
+              "https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip"
+              "https://dl.google.com/android/repository/commandlinetools-linux-6609375_latest.zip"
+            )
+            for u in "${FALLBACKS[@]}"; do
+              echo "Checking $u"
+              if wget -q --spider "$u"; then
+                TOOL_URL="$u"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$TOOL_URL" ]; then
+            echo "ERROR: couldn't find a commandlinetools download URL automatically."
+            exit 1
+          fi
+
+          echo "Downloading command line tools from: $TOOL_URL"
+          wget -q "$TOOL_URL" -O cmdline-tools.zip || { echo "wget failed"; ls -l cmdline-tools.zip || true; exit 1; }
+
+          # 3) verify zip (to avoid HTML 404 saved as zip)
+          if ! unzip -tq cmdline-tools.zip >/dev/null 2>&1; then
+            echo "Downloaded file is NOT a valid zip. Dump head for debugging:"
+            hexdump -C cmdline-tools.zip | head -n 40 || true
+            head -n 200 cmdline-tools.zip || true
+            exit 1
+          fi
+
+          # 4) unzip into TARGET_SDK_ROOT and normalize structure
+          unzip -q cmdline-tools.zip -d "$TARGET_SDK_ROOT/cmdline-tools"
+          if [ -d "$TARGET_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
+            mkdir -p "$TARGET_SDK_ROOT/cmdline-tools/latest"
+            mv "$TARGET_SDK_ROOT/cmdline-tools/cmdline-tools"/* "$TARGET_SDK_ROOT/cmdline-tools/latest/"
+          elif [ -d "$TARGET_SDK_ROOT/cmdline-tools/tools" ]; then
+            mkdir -p "$TARGET_SDK_ROOT/cmdline-tools/latest"
+            mv "$TARGET_SDK_ROOT/cmdline-tools/tools"/* "$TARGET_SDK_ROOT/cmdline-tools/latest/"
+          fi
+
+          SDKMAN="$TARGET_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          chmod +x "$SDKMAN"
+
+          # ensure PATH for this step
+          export PATH="$TARGET_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+
+          # 5) accept licenses and install required packages into TARGET_SDK_ROOT
+          echo "Accepting SDK licenses..."
+          yes | "$SDKMAN" --sdk_root="$TARGET_SDK_ROOT" --licenses
+
+          echo "Installing platform-tools, platforms;android-31, build-tools;36.1.0"
+          "$SDKMAN" --sdk_root="$TARGET_SDK_ROOT" --install "platform-tools" "platforms;android-31" "build-tools;36.1.0" --verbose
+
+          # 6) copy installed SDK into Buildozer's expected path
+          echo "Copying SDK into Buildozer expected path: $BOOZ_SDK_ROOT"
+          rsync -a "$TARGET_SDK_ROOT/" "$BOOZ_SDK_ROOT/"
+
+          # 7) expose environment values for later steps
+          echo "ANDROID_SDK_ROOT=$BOOZ_SDK_ROOT" >> $GITHUB_ENV
+          echo "PATH=$BOOZ_SDK_ROOT/cmdline-tools/latest/bin:$BOOZ_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
+
+      - name: Verify installed SDK & aidl
+        if: always()
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          set -euo pipefail
+          echo "Buildozer SDK root: $HOME/.buildozer/android/platform/android-sdk"
+          ls -la "$HOME/.buildozer/android/platform/android-sdk" || true
+          ls -la "$HOME/.buildozer/android/platform/android-sdk/build-tools" || true
+          if [ -x "$HOME/.buildozer/android/platform/android-sdk/build-tools/36.1.0/aidl" ]; then
+            echo "aidl exists and is executable."
+            "$HOME/.buildozer/android/platform/android-sdk/build-tools/36.1.0/aidl" --version || true
+          else
+            echo "aidl not found or not executable at expected location."
+            ls -la "$HOME/.buildozer/android/platform/android-sdk/build-tools/36.1.0" || true
+          fi
+
+      - name: Build APK (debug)
+        run: |
+          set -euo pipefail
+          # ensure local pip bin and sdk tools are on PATH (GITHUB_PATH/GITHUB_ENV already set)
+          echo "Running buildozer..."
+          buildozer -v android debug
+
+      - name: Show APK files
+        if: always()
+        run: |
+          echo "Searching for APK files..."
+          find . -type f -name "*.apk" -print || true
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: |
+            **/*.apk
