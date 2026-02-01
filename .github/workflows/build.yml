@@ -11,24 +11,56 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install system dependencies
+      - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            openjdk-11-jdk \
-            python3-pip \
-            zip unzip \
-            git
+          sudo apt-get install -y openjdk-11-jdk python3-pip unzip wget zip
 
-      - name: Install Buildozer
+      - name: Install Buildozer & Cython
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
+          python3 -m pip install --user buildozer cython
+          export PATH=$PATH:$HOME/.local/bin
+
+      - name: Install Android commandline tools + SDK + build-tools
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: |
+          set -e
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd /tmp
+          # commandlinetools zip을 다운로드 (Google 링크가 변경될 수 있으니 실패하면 에러 메시지 참고)
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-*.zip -O cmdline-tools.zip || true
+          # 만약 위 wget이 실패하면, 브라우저에서 최신 commandlinetools zip 파일명을 확인해 직접 넣어야 할 수 있습니다.
+          unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools || true
+          # 정렬된 디렉터리 구조: $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager 로 사용되도록 복사/이동
+          if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
+            mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          elif [ -d "$ANDROID_SDK_ROOT/cmdline-tools/tools" ]; then
+            mv $ANDROID_SDK_ROOT/cmdline-tools/tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          fi
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          # 필수 툴/플랫폼/빌드툴 설치 (buildozer.spec의 android.api/ndk와 맞춰 변경 가능)
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-31" "build-tools;36.1.0" --install-if-needed
+
+      - name: Show installed SDK tools
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: |
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+          ls -la $ANDROID_SDK_ROOT/build-tools || true
+          which aidl || true
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --list || true
 
       - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
         run: |
-          export PATH=$PATH:$HOME/.local/bin
-          cython --version
+          export PATH=$PATH:$HOME/.local/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+          # sanity check
+          aidl --version || echo "aidl not found yet"
           buildozer -v android debug
 
       - name: Upload APK
