@@ -25,26 +25,28 @@ jobs:
       - name: Install Buildozer and Cython
         run: |
           python3 -m pip install --upgrade pip
-          # 빌드 안정성을 위해 Cython 버전을 고정합니다.
           python3 -m pip install --user buildozer cython==0.29.33
-          # 실행 파일 경로를 환경 변수에 즉시 반영합니다.
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Automated Build with License Agreement
+      - name: Build APK (Fully Automated)
         run: |
-          # 1. SDK 라이선스 자동 동의 환경 변수 설정
+          # 1. 환경 변수 강제 설정 (AIDL 및 SDK 도구 인식용)
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export PATH=$PATH:$HOME/.local/bin:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+          
+          # 2. SDK 라이선스 자동 승인 강제 적용
           export APP_ANDROID_ACCEPT_SDK_LICENSE=1
           
-          # 2. buildozer.spec이 없을 경우를 대비해 초기화 (있으면 기존 파일 유지)
+          # 3. buildozer.spec이 없는 경우 자동 생성 및 기본 설정 수정
           if [ ! -f buildozer.spec ]; then
             buildozer init
+            sed -i 's/# android.accept_sdk_license = False/android.accept_sdk_license = True/' buildozer.spec
           fi
-          
-          # 3. 'yes' 파이프를 통해 모든 약관 질문에 자동으로 'y' 응답
-          # 이 한 줄이 모든 확인 과정을 자동화합니다.
+
+          # 4. 빌드 실행 (yes를 통해 모든 대화형 질문 자동 통과)
+          # --requirements 파라미터를 추가하여 라이브러리 누락 방지
           yes | buildozer -v android debug
         env:
-          # Buildozer 내부 엔진을 위한 라이선스 승인 옵션
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
 
       - name: Upload APK
