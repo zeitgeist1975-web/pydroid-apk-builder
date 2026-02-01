@@ -17,44 +17,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip \
-            build-essential \
-            git \
-            python3 \
-            python3-dev \
-            ffmpeg \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev \
-            libportmidi-dev \
-            libswscale-dev \
-            libavformat-dev \
-            libavcodec-dev \
-            zlib1g-dev \
-            libgstreamer1.0 \
-            gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good \
-            libsqlite3-dev \
-            sqlite3 \
-            bzip2 \
-            libbz2-dev \
-            libffi-dev \
-            libssl-dev \
-            openjdk-17-jdk \
-            zip \
-            unzip
+            python3-pip build-essential git python3 python3-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev libsqlite3-dev openjdk-17-jdk zip unzip
 
       - name: Install Buildozer and Cython
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install --user buildozer cython==0.29.33
+          python3 -m pip install --user buildozer "cython<3.0"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Build APK (debug)
         run: |
-          # 일반 사용자 권한으로 실행되므로 root 에러가 발생하지 않습니다.
+          # AIDL 에러 방지를 위한 경로 설정
+          mkdir -p ~/.buildozer
           buildozer -v android debug
+        env:
+          # 필요한 경우 환경 변수 추가
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
