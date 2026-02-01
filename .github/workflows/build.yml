@@ -1,15 +1,37 @@
-- name: Install Android commandline tools + SDK + build-tools
+ name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-11-jdk python3-pip unzip wget zip
+
+      - name: Install Buildozer & Cython
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --user buildozer cython
+          echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Install Android commandline tools + SDK + build-tools
         env:
           ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
           set -e
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
           cd /tmp
 
-          # 1) developer.android.com 페이지에서 실제 commandlinetools 다운로드 링크를 추출해서 사용
-          #    (페이지 구조가 바뀌지 않는 한 안정적으로 최신 link를 얻어옴)
-          TOOL_URL=$(curl -s https://developer.android.com/studio | \
-            grep -oE 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9_]+_latest.zip' | head -n1)
+          # get concrete commandlinetools zip URL from developer.android.com
+          TOOL_URL=$(curl -s https://developer.android.com/studio | grep -oE 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9_]+_latest.zip' | head -n1)
 
           if [ -z "$TOOL_URL" ]; then
             echo "ERROR: couldn't find commandlinetools download URL on developer.android.com"
@@ -19,29 +41,49 @@
           echo "Downloading command line tools from: $TOOL_URL"
           wget -q "$TOOL_URL" -O cmdline-tools.zip
 
-          # 2) 확인: 다운받은 파일이 실제 zip인지 검사
           if ! unzip -tq cmdline-tools.zip >/dev/null 2>&1; then
-            echo "Downloaded file is not a valid zip. Aborting."
-            # 출력 파일(HTML 등)을 로그로 남겨 디버깅을 쉽게 함
-            echo "----- begin downloaded file head -----"
+            echo "Downloaded file is not a valid zip. Dump head for debugging:"
             head -n 200 cmdline-tools.zip || true
-            echo "------ end downloaded file head ------"
             exit 1
           fi
 
-          # 3) 압축해제 및 디렉터리 정리 (sdkmanager가 cmdline-tools/latest/bin 에 있도록)
-          unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          # some zip packages contain a 'cmdline-tools' root folder, normalize to 'latest'
+          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+
+          # normalize folder so sdkmanager lives in cmdline-tools/latest/bin
           if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" ]; then
-            mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-            mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools"/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
           elif [ -d "$ANDROID_SDK_ROOT/cmdline-tools/tools" ]; then
-            mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-            mv $ANDROID_SDK_ROOT/cmdline-tools/tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            mv "$ANDROID_SDK_ROOT/cmdline-tools/tools"/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
           fi
 
-          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-          # 4) 라이선스 자동 동의 및 필수 패키지 설치
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-31" "build-tools;36.1.0" --install-if-needed
+          # accept licenses and install platform/build-tools
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-31" "build-tools;36.1.0" --install-if-needed
+
+      - name: Show installed SDK tools
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: |
+          echo "SDK root: $ANDROID_SDK_ROOT"
+          ls -la "$ANDROID_SDK_ROOT/build-tools" || true
+          which aidl || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --list || true
+
+      - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+        run: |
+          echo "PATH=$HOME/.local/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH" >> $GITHUB_ENV
+          aidl --version || echo "aidl not found yet"
+          buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: bin/*.apk
