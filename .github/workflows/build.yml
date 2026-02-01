@@ -3,13 +3,46 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Echo test
-        run: echo "Build workflow loaded"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-11-jdk \
+            python3-pip \
+            unzip zip git
+
+      - name: Install Buildozer & Cython
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --user buildozer cython
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build APK
+        run: |
+          buildozer -v android debug
+
+      # 🔍 APK 위치 확인 (디버그용)
+      - name: Show APK files
+        if: always()
+        run: |
+          echo "Searching for APK..."
+          find . -name "*.apk"
+
+      # 📦 APK 업로드 (항상 실행)
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: |
+            **/*.apk
