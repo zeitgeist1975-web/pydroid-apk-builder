@@ -1,9 +1,14 @@
-name: Build APK (Fixed Indentation)
+name: Build APK (Stable with Concurrency)
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+
+# 동일한 워크플로가 실행 중일 때, 이전 실행을 취소하고 새 실행을 우선함
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -16,7 +21,7 @@ jobs:
         run: |
           sudo docker image prune -a -f
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt-get clean
+          [span_5](start_span)sudo apt-get clean[span_5](end_span)
 
       - name: Setup Swap
         run: |
@@ -25,18 +30,18 @@ jobs:
           sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
-          sudo swapon /swapfile
+          [span_6](start_span)sudo swapon /swapfile[span_6](end_span)
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          [span_7](start_span)python-version: '3.10'[span_7](end_span)
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: '17'
-          distribution: 'temurin'
+          [span_8](start_span)distribution: 'temurin'[span_8](end_span)
 
       - name: Install system dependencies
         run: |
@@ -45,32 +50,31 @@ jobs:
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
             libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
-            pkg-config autoconf libtool zip unzip
+            [span_9](start_span)pkg-config autoconf libtool zip unzip[span_9](end_span)
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "cython<3.0.0" buildozer
+          [span_10](start_span)pip install "cython<3.0.0" buildozer[span_10](end_span)
 
       - name: Build with Buildozer
         env:
           JAVA_OPTS: "-Xmx2048m"
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"
+          [span_11](start_span)GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m"[span_11](end_span)
         run: |
-          # 1. 이전 빌드 초기화 및 캐시 정리
-          buildozer android clean || true
+          # 1. 이전 빌드 캐시 및 찌꺼기 제거
+          [span_12](start_span)buildozer android clean || true[span_12](end_span)
           
-          # 2. spec 파일의 핵심 오류(Version 누락, 아키텍처 등) 자동 보정
-          sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec
-          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
-          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
+          # 2. spec 파일 핵심 설정(Version, 아키텍처 등) 자동 보정
+          [span_13](start_span)sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec[span_13](end_span)
+          [span_14](start_span)sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec[span_14](end_span)
+          [span_15](start_span)sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec[span_15](end_span)
           
-          # 3. 실제 빌드 진행
-          yes y | buildozer -v android debug
+          # 3. 실제 빌드 진행 (v 옵션으로 상세 로그 출력)
+          [span_16](start_span)yes y | buildozer -v android debug[span_16](end_span)
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: my-app-apk
-          path: bin/*.apk
-ㅡ
+          [span_17](start_span)path: bin/*.apk[span_17](end_span)
