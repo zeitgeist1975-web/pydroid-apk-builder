@@ -1,24 +1,34 @@
 name: Build APK
+
 on:
   push:
     branches: [ main ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer:latest
-      options: --user 1000:1000        # ← 추가: 컨테이너를 non-root로 실행
+
     steps:
       - uses: actions/checkout@v3
-      - name: Show versions
+
+      - name: Install system dependencies
         run: |
-          python --version
-          pip --version
-          buildozer --version || true
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-11-jdk \
+            python3-pip \
+            zip unzip \
+            git
+
+      - name: Install Buildozer
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
+
       - name: Build APK (debug)
         run: |
-          export PATH=$PATH:~/.local/bin
           buildozer -v android debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
