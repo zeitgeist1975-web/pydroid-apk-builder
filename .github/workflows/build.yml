@@ -3,22 +3,57 @@ name: Build APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: # 수동 실행 버튼 추가
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 컨테이너를 사용하면 SDK/NDK 수동 설치 스크립트가 필요 없습니다.
-    container:
-      image: kivy/buildozer:latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Build APK with Buildozer
+      - name: Install system dependencies
         run: |
-          # Cython 및 경로 설정이 이미 완료된 이미지를 사용합니다.
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            build-essential \
+            git \
+            python3 \
+            python3-dev \
+            ffmpeg \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            libsdl2-mixer-dev \
+            libsdl2-ttf-dev \
+            libportmidi-dev \
+            libswscale-dev \
+            libavformat-dev \
+            libavcodec-dev \
+            zlib1g-dev \
+            libgstreamer1.0 \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            libsqlite3-dev \
+            sqlite3 \
+            bzip2 \
+            libbz2-dev \
+            libffi-dev \
+            libssl-dev \
+            openjdk-17-jdk \
+            zip \
+            unzip
+
+      - name: Install Buildozer and Cython
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --user buildozer cython==0.29.33
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build APK (debug)
+        run: |
+          # 일반 사용자 권한으로 실행되므로 root 에러가 발생하지 않습니다.
           buildozer -v android debug
 
       - name: Upload APK
