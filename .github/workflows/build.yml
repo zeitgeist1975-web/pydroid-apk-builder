@@ -12,19 +12,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Free Disk Space
+      - name: Free Disk Space (강력 삭제)
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
           sudo apt-get clean
+          df -h
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
@@ -39,20 +41,27 @@ jobs:
           python3 -m pip install buildozer cython==0.29.33
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Configure buildozer.spec
+      - name: Manual SDK Tools Link (경로 오류 방지)
         run: |
-          if [ ! -f buildozer.spec ]; then buildozer init; fi
-          sed -i 's/^[# ]*android.api =.*/android.api = 33/' buildozer.spec
-          sed -i 's/^[# ]*android.ndk =.*/android.ndk = 25b/' buildozer.spec
-          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          # Buildozer가 찾는 구형 경로에 대한 심볼릭 링크를 미리 준비합니다.
+          mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin
+          touch ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+          chmod +x ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
+
+      - name: Pre-accept SDK Licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56263434d92419a93602ee9f458440c3091b291\n24333f8a63b6825ea9d5513f8e074e7540a1d006" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          printf "84831b9409646a918e30573bab4c9c91346d8abd\n5046632204672908a1c814a0ec94751f357f12e2" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
 
       - name: Build APK
-        run: |
-          yes y | buildozer -v android debug
         env:
           APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
-          GRADLE_OPTS: "-Xmx2048m"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs='-Xmx2048m'"
+        run: |
+          # 주석 에러를 방지하기 위해 빌드 직전 spec 파일을 강제 보정합니다.
+          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          yes y | buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
