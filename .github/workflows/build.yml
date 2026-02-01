@@ -7,6 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: kivy/buildozer:latest
+      options: --user 1000:1000        # ← 추가: 컨테이너를 non-root로 실행
     steps:
       - uses: actions/checkout@v3
       - name: Show versions
