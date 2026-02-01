@@ -1,4 +1,4 @@
-name: Build APK (Fixed)
+name: Build APK (Fixed Syntax)
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo docker image prune -a -f
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          [span_2](start_span)sudo apt-get clean[span_2](end_span)
+          sudo apt-get clean
 
       - name: Setup Swap
         run: |
@@ -25,7 +25,7 @@ jobs:
           sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
-          [span_3](start_span)sudo swapon /swapfile[span_3](end_span)
+          sudo swapon /swapfile
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -41,32 +41,29 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          # [span_4](start_span)utf8proc를 libutf8proc-dev로 수정하여 설치 오류 해결[span_4](end_span)
           sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
             libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
             gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
-            [span_5](start_span)[span_6](start_span)pkg-config autoconf libtool zip unzip[span_5](end_span)[span_6](end_span)
+            [span_1](start_span)pkg-config autoconf libtool zip unzip[span_1](end_span)
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          # Cython 3.0 이상 버전과의 호환성 문제를 방지하기 위해 0.29.x 버전을 강제합니다.
-          [span_7](start_span)pip install "cython<3.0.0" buildozer[span_7](end_span)
+          [span_2](start_span)pip install "cython<3.0.0" buildozer[span_2](end_span)
 
       - name: Build with Buildozer
         env:
-          # 빌드 안정성을 위한 메모리 옵션 설정
           ANT_OPTS: "-Xmx2048m"
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx2048m'"
+          # 아래 줄(GRADLE_OPTS)에서 따옴표 중첩 에러가 자주 발생하므로 수정됨
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m" 
         run: |
-          # spec 파일의 아키텍처 설정을 강제로 보정하고 라이선스에 자동 동의합니다.
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
-          [span_8](start_span)yes y | buildozer -v android debug[span_8](end_span)
+          [span_3](start_span)yes y | buildozer -v android debug[span_3](end_span)
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: my-app-apk
-          [span_9](start_span)path: bin/*.apk[span_9](end_span)
+          path: bin/*.apk
