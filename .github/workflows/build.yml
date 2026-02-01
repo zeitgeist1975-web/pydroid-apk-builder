@@ -1,4 +1,4 @@
-name: Build APK (SDK Manual Fix)
+name: Build APK (Final Fixed Version)
 
 on:
   push:
@@ -8,32 +8,72 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Free Disk Space & Setup Swap
+      - name: Free Disk Space (핵심: 용량 확보)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo swapoff -a || true
-          sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/lib/jvm
+          df -h
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
+          sudo apt-get install -y \
+            build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev \
             libavformat-dev libavcodec-dev zlib1g-dev libsqlite3-dev \
             openjdk-17-jdk zip unzip cmake autoconf automake libtool \
-            pkg-config libffi-dev libssl-dev gettext
+            pkg-config libffi-dev libssl-dev
+
+      - name: Install Buildozer and Cython
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython==0.29.33
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure and Fix buildozer.spec
+        run: |
+          if [ ! -f buildozer.spec ]; then
+            buildozer init
+          fi
+          
+          # [중요] 주석 포함된 설정값 강제 수정 (주석 제거)
+          sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
+          sed -i 's/^requirements =.*/requirements = python3,kivy,requests,certifi/' buildozer.spec
+          sed -i 's/^[# ]*android.api =.*/android.api = 33/' buildozer.spec
+          sed -i 's/^[# ]*android.ndk =.*/android.ndk = 25b/' buildozer.spec
+
+      - name: Pre-accept Android SDK Licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56263434d92419a93602ee9f458440c3091b291\n24333f8a63b6825ea9d5513f8e074e7540a1d006" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+
+      - name: Build APK
+        run: |
+          # yes y를 사용하여 모든 질문에 강제 대답
+          yes y | buildozer -v android debug
+        env:
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs='-Xmx2048m'"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-apk
+          path: bin/*.apk
 
       - name: Install Buildozer
         run: |
