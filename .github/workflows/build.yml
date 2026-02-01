@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK (Fixed)
 
 on:
   push:
@@ -12,55 +12,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Free Disk Space (강력 삭제)
+      - name: Free Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
+          sudo docker image prune -a -f
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo apt-get clean
-          df -h
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install System Dependencies
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
-            libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev \
-            libavformat-dev libavcodec-dev zlib1g-dev libsqlite3-dev \
-            openjdk-17-jdk zip unzip cmake autoconf automake libtool \
-            pkg-config libffi-dev libssl-dev gettext
+            libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
+            libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good libffi-dev libssl-dev utf8proc libsqlite3-dev
 
-      - name: Install Buildozer
+      - name: Install Python dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython==0.29.33
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          python -m pip install --upgrade pip
+          # Cython 3.0 이상은 Kivy 2.2.1과 호환성 문제가 생길 수 있으므로 0.29.x 버전을 사용합니다.
+          pip install "cython<3.0.0" buildozer
+          pip install -r requirements.txt || true
 
-      - name: Manual SDK Tools Link (경로 오류 방지)
-        run: |
-          # Buildozer가 찾는 구형 경로에 대한 심볼릭 링크를 미리 준비합니다.
-          mkdir -p ~/.buildozer/android/platform/android-sdk/tools/bin
-          touch ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-          chmod +x ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager
-
-      - name: Pre-accept SDK Licenses
-        run: |
-          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
-          printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56263434d92419a93602ee9f458440c3091b291\n24333f8a63b6825ea9d5513f8e074e7540a1d006" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          printf "84831b9409646a918e30573bab4c9c91346d8abd\n5046632204672908a1c814a0ec94751f357f12e2" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-
-      - name: Build APK
+      - name: Build with Buildozer
         env:
-          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
-          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs='-Xmx2048m'"
+          # 빌드 프로세스 안정성을 위해 가상메모리 및 하드웨어 가속 옵션 설정
+          BUILD_GRADLE_OPTS: "-Xmx2048m"
         run: |
-          # 주석 에러를 방지하기 위해 빌드 직전 spec 파일을 강제 보정합니다.
+          # spec 파일의 주석 에러 방지 및 필수 설정 강제 주입
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
+          sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
           yes y | buildozer -v android debug
 
       - name: Upload APK
