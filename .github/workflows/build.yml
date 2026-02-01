@@ -7,23 +7,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Install system packages
-      run: |
-        sudo apt update
-        sudo apt install -y python3 python3-pip openjdk-17-jdk zip unzip
-
-    - name: Install Buildozer
-      run: |
-        pip3 install --user buildozer
-        export PATH=$PATH:~/.local/bin
-
     - name: Build APK
       run: |
-        buildozer android debug
+        buildozer -v android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v3
