@@ -1,5 +1,4 @@
 name: Build APK
-
 on:
   push:
     branches: [ main ]
@@ -7,26 +6,59 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install system dependencies
+      - name: Install OS deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            openjdk-11-jdk \
-            python3-pip \
-            zip unzip \
-            git
+          sudo apt-get install -y openjdk-17-jdk wget unzip zip
 
-      - name: Install Buildozer
+      - name: Setup Android SDK (cmdline-tools) and install build-tools
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
+          set -e
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          cd /tmp
+          # (1) 최신 커맨드라인 툴 URL은 필요시 변경. 버전이 바뀌면 교체하세요.
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
+          unzip -q cmdline.zip -d $ANDROID_SDK_ROOT/cmdline-tools/tmp
+          # sdkmanager expects path .../cmdline-tools/latest/bin, so create 'latest'
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
+          mv $ANDROID_SDK_ROOT/cmdline-tools/tmp/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+          export PATH=$PATH:$ANDROID_SDK_ROOT/platform-tools
+          # Accept licenses non-interactively
+          yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses || true
+          # Install platform-tools, a platform and build-tools (여기에 원하는 버전 명시)
+          sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-31" "build-tools;36.1.0" "build-tools;31.0.0"
+          # verify aidl exists
+          echo "Installed build-tools directories:"
+          ls -la $ANDROID_SDK_ROOT/build-tools || true
+          echo "Check for aidl files:"
+          find $ANDROID_SDK_ROOT/build-tools -maxdepth 2 -type f -name aidl -print || true
+
+      - name: Install buildozer & deps
+        run: |
+          python3 -m pip install --user --upgrade pip
+          python3 -m pip install --user buildozer cython
+          export PATH=$PATH:~/.local/bin
 
       - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          PATH: ${{ github.workspace }}/android-sdk/cmdline-tools/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:~/.local/bin
         run: |
+          set -e
+          # sanity check: aidl 실행 확인
+          if ! command -v $ANDROID_SDK_ROOT/build-tools/*/aidl >/dev/null 2>&1; then
+            echo "ERROR: aidl not found in build-tools!"
+            ls -la $ANDROID_SDK_ROOT/build-tools || true
+            exit 1
+          fi
           buildozer -v android debug
 
       - name: Upload APK
