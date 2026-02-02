@@ -10,6 +10,15 @@ from kivy.uix.progressbar import ProgressBar
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.clock import Clock
+from kivy.utils import platform # 플랫폼 확인용
+
+# 안드로이드 빌드 환경일 때만 권한 모듈 임포트
+if platform == 'android':
+    try:
+        from android.permissions import request_permissions, Permission
+    except ImportError:
+        pass
+
 import PyPDF2
 from deep_translator import GoogleTranslator
 
@@ -24,6 +33,13 @@ KOREAN_FONT = get_korean_font()
 
 class MedicalKivyTranslator(App):
     def build(self):
+        # [수정] 앱 시작 시 권한 요청 (안드로이드 환경에서만 실행)
+        if platform == 'android':
+            try:
+                request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
+            except Exception as e:
+                print(f"Permission Error: {e}")
+
         self.kmle_db = {"체포": "정지(Arrest)", "심장 체포": "심정지", "문화": "배양"}
         self.download_path = "/storage/emulated/0/Download"
         self.translator = GoogleTranslator(source='en', target='ko')
@@ -31,7 +47,7 @@ class MedicalKivyTranslator(App):
         
         root = BoxLayout(orientation='vertical', padding=15, spacing=10)
 
-        # 1. 상단 설정 (텍스트 잘림 해결을 위한 높이 및 패딩 조정)
+        # 1. 상단 설정
         top_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=10)
         try:
             pdf_files = [f for f in os.listdir(self.download_path) if f.lower().endswith('.pdf')]
@@ -42,7 +58,6 @@ class MedicalKivyTranslator(App):
             text='번역할 PDF 선택', values=pdf_files, 
             size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp'
         )
-        # padding: [left, top, right, bottom] -> top 패딩을 충분히 주어 중앙 배치
         self.filename_input = TextInput(
             text="result_KO.pdf", multiline=False, 
             size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp',
@@ -52,7 +67,7 @@ class MedicalKivyTranslator(App):
         top_layout.add_widget(self.filename_input)
         root.add_widget(top_layout)
 
-        # 2. 프로그레스바 (가독성 강화)
+        # 2. 프로그레스바
         progress_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=55, spacing=10)
         self.pb = ProgressBar(max=100, value=0, size_hint_y=None, height=45)
         self.percent_label = Label(text="0.0%", size_hint_x=0.25, font_size='22sp', bold=True)
@@ -61,14 +76,12 @@ class MedicalKivyTranslator(App):
         root.add_widget(progress_box)
 
         # 3. 상하 대조 창
-        # 영문 (위)
         self.eng_label = Label(text="", size_hint_y=None, font_size='14sp', halign='left', valign='top', padding=(15, 15), color=(0.8, 0.8, 0.8, 1))
         self.eng_label.bind(size=lambda s, w: s.setter('text_size')(s, (w[0], None)))
         self.eng_scroll = ScrollView(size_hint_y=0.45)
         self.eng_scroll.add_widget(self.eng_label)
         root.add_widget(self.eng_scroll)
         
-        # 한글 (아래)
         self.kor_label = Label(text="", size_hint_y=None, font_size='14sp', font_name=KOREAN_FONT, halign='left', valign='top', padding=(15, 15), color=(0, 0.8, 1, 1))
         self.kor_label.bind(size=lambda s, w: s.setter('text_size')(s, (w[0], None)))
         self.kor_scroll = ScrollView(size_hint_y=0.45)
@@ -101,18 +114,13 @@ class MedicalKivyTranslator(App):
                 sentences = [s.strip() for s in text.replace('\n', ' ').split('. ') if len(s) > 5]
                 
                 for j, sent in enumerate(sentences):
-                    # 구글 번역기 호출 (이 단계가 실제 속도 제한 단계)
                     translated = self.translator.translate(sent)
                     for w, c in self.kmle_db.items():
                         translated = translated.replace(w, c)
                     
                     prog = ((i / total_pages) + (j / len(sentences) / total_pages)) * 100
-                    
-                    # UI 업데이트 및 타이핑 효과 트리거
                     self.is_typing = True
                     Clock.schedule_once(lambda dt, s=sent, t=translated, p=prog: self.run_typing_sync(s, t, p))
-                    
-                    # 타이핑이 완료될 때까지 대기하여 싱크 유지
                     while self.is_typing:
                         time.sleep(0.005)
             
@@ -123,12 +131,8 @@ class MedicalKivyTranslator(App):
     def run_typing_sync(self, eng, kor, prog):
         e_text = f"• {eng}\n\n"
         k_text = f"• {kor}\n\n"
-        
-        # 영문 타이핑 시작
         for idx, char in enumerate(e_text):
             Clock.schedule_once(lambda dt, c=char: self.update_ui('eng', c), idx * 0.001)
-        
-        # 한글 타이핑 시작 (영문 직후 고속 시작)
         delay = len(e_text) * 0.001
         for idx, char in enumerate(k_text):
             last = (idx == len(k_text) - 1)
@@ -142,16 +146,11 @@ class MedicalKivyTranslator(App):
             if prog:
                 self.pb.value = prog
                 self.percent_label.text = f"{prog:.1f}%"
-
         label.text += char
         if len(label.text) > 5000: label.text = label.text[-4500:]
-        
-        # 높이 갱신 및 스크롤 고정
         label.height = max(label.texture_size[1], scroll.height)
         scroll.scroll_y = 0
-        
-        if is_last:
-            self.is_typing = False
+        if is_last: self.is_typing = False
 
     def complete(self):
         self.btn.disabled = False
