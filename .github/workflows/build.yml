@@ -1,4 +1,4 @@
-name: Build APK (Stable Version)
+name: Build APK (Dependency Fix)
 
 on:
   push:
@@ -11,7 +11,6 @@ concurrency:
 
 jobs:
   build:
-    # Ubuntu 24.04의 헤더 충돌을 피하기 위해 22.04로 변경합니다.
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
@@ -37,12 +36,12 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
+          # libunwind-dev를 명시적으로 추가하여 의존성 오류를 해결합니다.
           sudo apt-get install -y build-essential git python3-dev libsdl2-dev libsdl2-image-dev \
             libsdl2-mixer-dev libsdl2-ttf-dev libportmidi-dev libswscale-dev libavformat-dev \
-            libavcodec-dev zlib1g-dev libgstreamer1.0-dev gstreamer1.0-plugins-base \
-            gstreamer1.0-plugins-good libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
+            libavcodec-dev zlib1g-dev libffi-dev libssl-dev libutf8proc-dev libsqlite3-dev \
             pkg-config autoconf libtool zip unzip libncurses5-dev libgdbm-dev libnss3-dev \
-            libreadline-dev tk-dev libbz2-dev libltdl-dev
+            libreadline-dev tk-dev libbz2-dev libltdl-dev libunwind-dev
 
       - name: Install Python dependencies
         run: |
@@ -57,16 +56,17 @@ jobs:
           # 1. 빌드 캐시 초기화
           buildozer android clean || true
           
-          # 2. buildozer.spec 자동 수정 (사용자 요청 반영)
-          # requirements 라인을 찾아 사용자님의 요청사항(python3, kivy, requests 등)으로 강제 교체합니다.
-          sed -i 's|^requirements =.*|requirements = python3,kivy==2.2.1,requests,certifi,openssl|' buildozer.spec
+          # 2. buildozer.spec 자동 수정
+          # requirements 설정 (kivy, requests 등 포함)
+          sed -i 's|^requirements =.*|requirements = python3,kivy==2.2.1,requests,certifi,openssl,hostpython3|' buildozer.spec
           
-          # 기타 필수 설정 보정
+          # 기타 필수 설정
           sed -i 's/^[# ]*version =.*/version = 1.0.0/' buildozer.spec
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
           
           # 3. 빌드 실행
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:.
           yes y | buildozer -v android debug
 
       - name: Upload APK
