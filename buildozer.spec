@@ -4,9 +4,7 @@ package.name = myapp
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-
 version = 1.0.0
-
 requirements = python3,kivy==2.2.1,requests,certifi,urllib3,openssl,pypdf2,deep-translator
 android.api = 33
 android.minapi = 21
