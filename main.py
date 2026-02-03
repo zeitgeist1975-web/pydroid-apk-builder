@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import threading
 import time
@@ -19,230 +21,228 @@ from kivy.core.text import LabelBase
 if platform == 'android':
     try:
         from android.permissions import request_permissions, Permission
+        from jnius import autoclass
+        Environment = autoclass('android.os.Environment')
+        Build = autoclass('android.os.Build')
     except ImportError:
-        pass
+        Environment = None
+        Build = None
 
 def safe_import():
     try:
         global PyPDF2
         import PyPDF2
-        return True, "PyPDF2 loaded"
+        return True, "OK"
     except Exception as e:
         return False, str(e)
 
 def translate_text(text, target='ko'):
     try:
         base_url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            'client': 'gtx',
-            'sl': 'en',
-            'tl': target,
-            'dt': 't',
-            'q': text
-        }
+        params = {'client': 'gtx', 'sl': 'en', 'tl': target, 'dt': 't', 'q': text}
         url = base_url + '?' + urllib.parse.urlencode(params)
         headers = {'User-Agent': 'Mozilla/5.0'}
-        
         req = urllib.request.Request(url, headers=headers)
         response = urllib.request.urlopen(req, timeout=10)
         result = json.loads(response.read().decode('utf-8'))
-        
         translated = ''
         for sentence in result[0]:
             if sentence[0]:
                 translated += sentence[0]
         return translated
     except Exception as e:
-        print(f"Translation error: {e}")
         return text
 
-def register_korean_font():
-    """안드로이드 시스템 한글 폰트 찾아서 등록"""
-    font_paths = [
-        "/system/fonts/NanumGothic.ttf",
-        "/system/fonts/NotoSansCJK-Regular.ttc",
-        "/system/fonts/DroidSansFallback.ttf",
-        "/system/fonts/NotoSansKR-Regular.otf"
-    ]
-    
-    for font_path in font_paths:
-        if os.path.exists(font_path):
+def register_fonts():
+    paths = ["/system/fonts/NanumGothic.ttf", "/system/fonts/NotoSansCJK-Regular.ttc", 
+             "/system/fonts/DroidSansFallback.ttf", "/system/fonts/NotoSansKR-Regular.otf"]
+    for p in paths:
+        if os.path.exists(p):
             try:
-                LabelBase.register(name='Korean', fn_regular=font_path)
-                print(f"Korean font registered: {font_path}")
-                return 'Korean'
-            except Exception as e:
-                print(f"Font register error: {e}")
+                LabelBase.register(name='KoreanFont', fn_regular=p)
+                return True
+            except:
                 continue
-    
-    print("No Korean font found, using default")
-    return 'Roboto'
-
-KOREAN_FONT = register_korean_font()
+    return False
 
 class MedicalKivyTranslator(App):
     def build(self):
         self.kmle_db = {"체포": "정지(Arrest)", "심장 체포": "심정지", "문화": "배양"}
-        self.download_path = "/storage/emulated/0/Download"
+        
+        if platform == 'android' and Environment:
+            try:
+                dd = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                self.download_path = dd.getAbsolutePath()
+            except:
+                self.download_path = "/storage/emulated/0/Download"
+        else:
+            self.download_path = "/storage/emulated/0/Download"
+        
         self.is_typing = False
         self.libs_loaded = False
+        self.font_loaded = register_fonts()
         
         root = BoxLayout(orientation='vertical', padding=15, spacing=10)
-
         top_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=10)
         
-        self.file_spinner = Spinner(text='Loading...', values=['Wait'], size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp')
+        fn = 'KoreanFont' if self.font_loaded else 'Roboto'
+        
+        self.file_spinner = Spinner(text='Init...', values=['Wait'], size_hint_y=None, 
+                                   height=85, font_name=fn, font_size='17sp')
         self.file_spinner.bind(on_press=self.refresh_files)
-        self.filename_input = TextInput(text="result_KO.pdf", multiline=False, size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp', padding=[15, 28, 15, 10], cursor_color=(0, 0.5, 0.8, 1))
+        
+        self.filename_input = TextInput(text="result_KO.pdf", multiline=False, 
+                                       size_hint_y=None, height=85, font_name=fn, 
+                                       font_size='17sp', padding=[15, 28, 15, 10])
         top_layout.add_widget(self.file_spinner)
         top_layout.add_widget(self.filename_input)
         root.add_widget(top_layout)
 
-        progress_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=55, spacing=10)
+        pb_box = BoxLayout(orientation='horizontal', size_hint_y=None, height=55, spacing=10)
         self.pb = ProgressBar(max=100, value=0, size_hint_y=None, height=45)
-        self.percent_label = Label(text="0.0%", size_hint_x=0.25, font_name=KOREAN_FONT, font_size='22sp', bold=True)
-        progress_box.add_widget(self.pb)
-        progress_box.add_widget(self.percent_label)
-        root.add_widget(progress_box)
+        self.percent_label = Label(text="0.0%", size_hint_x=0.25, font_name=fn, 
+                                  font_size='22sp', bold=True)
+        pb_box.add_widget(self.pb)
+        pb_box.add_widget(self.percent_label)
+        root.add_widget(pb_box)
 
-        self.eng_label = Label(text="", size_hint_y=None, font_size='14sp', halign='left', valign='top', padding=(15, 15), color=(0.8, 0.8, 0.8, 1))
+        self.eng_label = Label(text="", size_hint_y=None, font_size='14sp', 
+                              halign='left', valign='top', padding=(15, 15), 
+                              color=(0.8, 0.8, 0.8, 1))
         self.eng_label.bind(size=lambda s, w: s.setter('text_size')(s, (w[0], None)))
         self.eng_scroll = ScrollView(size_hint_y=0.45)
         self.eng_scroll.add_widget(self.eng_label)
         root.add_widget(self.eng_scroll)
         
-        self.kor_label = Label(text="초기화 중...", size_hint_y=None, font_size='14sp', font_name=KOREAN_FONT, halign='left', valign='top', padding=(15, 15), color=(0, 0.8, 1, 1))
+        self.kor_label = Label(text="Loading...", size_hint_y=None, font_size='14sp', 
+                              font_name=fn, halign='left', valign='top', 
+                              padding=(15, 15), color=(0, 0.8, 1, 1))
         self.kor_label.bind(size=lambda s, w: s.setter('text_size')(s, (w[0], None)))
         self.kor_scroll = ScrollView(size_hint_y=0.45)
         self.kor_scroll.add_widget(self.kor_label)
         root.add_widget(self.kor_scroll)
 
-        self.btn = Button(text="의학 번역 시작", size_hint_y=None, height=95, font_name=KOREAN_FONT, font_size='20sp', background_color=(0, 0.5, 0.9, 1))
+        self.btn = Button(text="Start", size_hint_y=None, height=95, font_name=fn, 
+                         font_size='20sp', background_color=(0, 0.5, 0.9, 1))
         self.btn.bind(on_press=self.start_thread)
         root.add_widget(self.btn)
 
-        Clock.schedule_once(lambda dt: self.init_app(), 0.5)
-
+        Clock.schedule_once(lambda dt: self.request_permissions_ui(), 0.5)
         return root
+
+    def request_permissions_ui(self):
+        if platform == 'android':
+            try:
+                perms = [Permission.INTERNET, Permission.READ_EXTERNAL_STORAGE, 
+                        Permission.WRITE_EXTERNAL_STORAGE]
+                if Build and Build.VERSION.SDK_INT >= 33:
+                    try:
+                        perms.append(Permission.READ_MEDIA_IMAGES)
+                    except:
+                        pass
+                request_permissions(perms)
+                Clock.schedule_once(lambda dt: self.init_app(), 3.5)
+            except Exception as e:
+                Clock.schedule_once(lambda dt: self.init_app(), 1)
+        else:
+            Clock.schedule_once(lambda dt: self.init_app(), 0.5)
 
     def init_app(self):
         def initialize():
-            if platform == 'android':
-                try:
-                    request_permissions([
-                        Permission.READ_EXTERNAL_STORAGE,
-                        Permission.WRITE_EXTERNAL_STORAGE,
-                        Permission.INTERNET
-                    ])
-                    time.sleep(2)
-                except Exception as e:
-                    print(f"Permission error: {e}")
-            
             success, msg = safe_import()
             self.libs_loaded = success
-            
-            Clock.schedule_once(lambda dt: self.update_after_init(success, msg))
-        
+            Clock.schedule_once(lambda dt: self.after_init(success))
         threading.Thread(target=initialize, daemon=True).start()
 
-    def update_after_init(self, success, msg):
+    def after_init(self, success):
         if success:
-            self.kor_label.text = msg + " - 파일 확인 중..."
             Clock.schedule_once(lambda dt: self.refresh_files(None), 0.5)
         else:
-            self.file_spinner.text = '라이브러리 오류'
-            self.file_spinner.values = ['재빌드 필요']
-            self.kor_label.text = f'실패: {msg}'
+            self.file_spinner.text = 'Error'
+            self.kor_label.text = 'Library load failed'
 
     def refresh_files(self, instance):
-        """파일 목록 새로고침"""
-        def load_files():
-            pdf_files = []
-            error_msg = ""
-            
-            try:
-                if not os.path.exists(self.download_path):
-                    error_msg = f"경로 없음: {self.download_path}"
-                elif not os.access(self.download_path, os.R_OK):
-                    error_msg = "읽기 권한 없음"
-                else:
-                    all_files = os.listdir(self.download_path)
-                    for f in all_files:
-                        if f.lower().endswith('.pdf'):
-                            pdf_files.append(f)
-                    pdf_files.sort()
-                    
-                    if not pdf_files:
-                        error_msg = f"PDF 없음: {self.download_path}"
-            except Exception as e:
-                error_msg = f"오류: {str(e)}"
-            
-            Clock.schedule_once(lambda dt: self.update_file_list(pdf_files, error_msg))
-        
-        threading.Thread(target=load_files, daemon=True).start()
+        def load():
+            files = []
+            paths = [self.download_path, "/storage/emulated/0/Download", "/sdcard/Download"]
+            found = None
+            for p in paths:
+                try:
+                    if os.path.exists(p) and os.access(p, os.R_OK):
+                        all_f = os.listdir(p)
+                        temp = [f for f in all_f if f.lower().endswith('.pdf')]
+                        if temp:
+                            files = temp
+                            found = p
+                            break
+                except:
+                    continue
+            if files:
+                files.sort()
+                if found:
+                    self.download_path = found
+            Clock.schedule_once(lambda dt: self.update_list(files))
+        threading.Thread(target=load, daemon=True).start()
 
-    def update_file_list(self, pdf_files, error_msg):
-        if pdf_files:
-            self.file_spinner.text = 'PDF 선택'
-            self.file_spinner.values = pdf_files
-            self.kor_label.text = f'준비 완료 - {len(pdf_files)}개 PDF 발견'
+    def update_list(self, files):
+        if files:
+            self.file_spinner.text = 'Select PDF'
+            self.file_spinner.values = files
+            n = str(len(files))
+            t1 = "Ready - " + n + " PDFs"
+            t2 = self.download_path
+            self.kor_label.text = t1 + chr(10) + t2
         else:
-            self.file_spinner.text = 'PDF 없음'
-            self.file_spinner.values = ['탭하여 새로고침']
-            self.kor_label.text = error_msg if error_msg else 'PDF 파일 없음'
+            self.file_spinner.text = 'No PDF'
+            self.file_spinner.values = ['Tap to refresh']
+            self.kor_label.text = 'No PDF found'
 
     def start_thread(self, instance):
         if not self.libs_loaded:
-            self.kor_label.text = "PyPDF2 로드 안됨"
+            self.kor_label.text = "Library not loaded"
             return
-        if self.file_spinner.text in ('PDF 선택', 'Loading...', 'PDF 없음', '라이브러리 오류'):
-            self.kor_label.text = "먼저 PDF 파일을 선택하세요 (스피너 탭하여 새로고침)"
+        if self.file_spinner.text in ('Select PDF', 'Init...', 'No PDF', 'Error'):
+            self.kor_label.text = "Select PDF first"
             return
-            
         self.btn.disabled = True
         self.eng_label.text = ""
-        self.kor_label.text = "번역 시작 중..."
+        self.kor_label.text = "Starting..."
         threading.Thread(target=self.process, daemon=True).start()
 
     def process(self):
         try:
-            input_file = os.path.join(self.download_path, self.file_spinner.text)
-            reader = PyPDF2.PdfReader(input_file)
-            total_pages = len(reader.pages)
-            
+            fpath = os.path.join(self.download_path, self.file_spinner.text)
+            reader = PyPDF2.PdfReader(fpath)
+            total = len(reader.pages)
             for i, page in enumerate(reader.pages):
-                text = page.extract_text()
-                if not text:
+                txt = page.extract_text()
+                if not txt:
                     continue
-                clean_text = text.replace(chr(10), ' ')
-                sentence_list = clean_text.split('. ')
-                sentences = [s.strip() for s in sentence_list if len(s) > 5]
-                
-                for j, sent in enumerate(sentences):
-                    translated = translate_text(sent, 'ko')
+                clean = txt.replace(chr(10), ' ')
+                sents = [s.strip() for s in clean.split('. ') if len(s) > 5]
+                for j, sent in enumerate(sents):
+                    trans = translate_text(sent, 'ko')
                     for w, c in self.kmle_db.items():
-                        translated = translated.replace(w, c)
-                    
-                    prog = ((i / total_pages) + (j / len(sentences) / total_pages)) * 100
+                        trans = trans.replace(w, c)
+                    prog = ((i / total) + (j / len(sents) / total)) * 100
                     self.is_typing = True
-                    Clock.schedule_once(lambda dt, s=sent, t=translated, p=prog: self.run_typing_sync(s, t, p))
+                    Clock.schedule_once(lambda dt, s=sent, t=trans, p=prog: self.type_sync(s, t, p))
                     while self.is_typing:
                         time.sleep(0.005)
-            
             Clock.schedule_once(lambda dt: self.complete())
         except Exception as e:
-            Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', "오류: " + str(e)))
+            Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', "Error: " + str(e)))
 
-    def run_typing_sync(self, eng, kor, prog):
-        newline = chr(10)
-        e_text = "• " + eng + newline + newline
-        k_text = "• " + kor + newline + newline
-        for idx, char in enumerate(e_text):
-            Clock.schedule_once(lambda dt, c=char: self.update_ui('eng', c), idx * 0.001)
-        delay = len(e_text) * 0.001
-        for idx, char in enumerate(k_text):
-            last = (idx == len(k_text) - 1)
-            Clock.schedule_once(lambda dt, c=char, l=last, p=prog: self.update_ui('kor', c, l, p), delay + (idx * 0.002))
+    def type_sync(self, eng, kor, prog):
+        nl = chr(10)
+        et = "• " + eng + nl + nl
+        kt = "• " + kor + nl + nl
+        for i, c in enumerate(et):
+            Clock.schedule_once(lambda dt, ch=c: self.update_ui('eng', ch), i * 0.001)
+        d = len(et) * 0.001
+        for i, c in enumerate(kt):
+            last = (i == len(kt) - 1)
+            Clock.schedule_once(lambda dt, ch=c, l=last, p=prog: self.update_ui('kor', ch, l, p), d + (i * 0.002))
 
     def update_ui(self, target, char, is_last=False, prog=None):
         if target == 'eng':
@@ -262,7 +262,7 @@ class MedicalKivyTranslator(App):
 
     def complete(self):
         self.btn.disabled = False
-        self.btn.text = "번역 및 파일 저장 완료"
+        self.btn.text = "Done"
         self.pb.value = 100
         self.percent_label.text = "100.0%"
 
