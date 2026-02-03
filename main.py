@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import threading
 import time
@@ -14,15 +16,14 @@ from kivy.utils import platform
 
 if platform == 'android':
     try:
-        from android.permissions import request_permissions, Permission, check_permission
+        from android.permissions import request_permissions, Permission
     except ImportError:
         pass
 
-# [수정] import를 함수 내부로 이동 (초기화 지연)
 def safe_import():
     try:
-        global PyPDF2, GoogleTranslator
-        import PyPDF2
+        global PdfReader, GoogleTranslator
+        from pypdf import PdfReader
         from deep_translator import GoogleTranslator
         return True
     except Exception as e:
@@ -43,17 +44,16 @@ KOREAN_FONT = get_korean_font()
 
 class MedicalKivyTranslator(App):
     def build(self):
-        # [추가] 안드로이드 권한 체크 및 요청
         if platform == 'android':
             try:
                 request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
-                time.sleep(0.5)  # 권한 처리 대기
+                time.sleep(1)
             except Exception as e:
                 print(f"Permission Error: {e}")
 
         self.kmle_db = {"체포": "정지(Arrest)", "심장 체포": "심정지", "문화": "배양"}
         self.download_path = "/storage/emulated/0/Download"
-        self.translator = None  # [수정] 나중에 초기화
+        self.translator = None
         self.is_typing = False
         self.libs_loaded = False
         
@@ -61,15 +61,9 @@ class MedicalKivyTranslator(App):
 
         top_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=10)
         
-        # [수정] 안전한 파일 목록 로드
-        pdf_files = ['PDF 파일 없음']
-        try:
-            if os.path.exists(self.download_path):
-                files = [f for f in os.listdir(self.download_path) if f.lower().endswith('.pdf')]
-                if files:
-                    pdf_files = files
-        except Exception as e:
-            print(f"File list error: {e}")
+        pdf_files = self.get_pdf_files()
+        if not pdf_files:
+            pdf_files = ['PDF 파일 없음']
 
         self.file_spinner = Spinner(text='번역할 PDF 선택', values=pdf_files, size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp')
         self.filename_input = TextInput(text="result_KO.pdf", multiline=False, size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp', padding=[15, 28, 15, 10], cursor_color=(0, 0.5, 0.8, 1))
@@ -100,13 +94,24 @@ class MedicalKivyTranslator(App):
         self.btn.bind(on_press=self.start_thread)
         root.add_widget(self.btn)
 
-        # [추가] 라이브러리 로드를 백그라운드에서 실행
         Clock.schedule_once(lambda dt: self.load_libraries(), 0.5)
 
         return root
 
+    def get_pdf_files(self):
+        """Download 폴더에서 PDF 파일 목록 가져오기"""
+        pdf_files = []
+        try:
+            if os.path.exists(self.download_path):
+                for f in os.listdir(self.download_path):
+                    if f.lower().endswith('.pdf'):
+                        pdf_files.append(f)
+        except Exception as e:
+            print(f"PDF list error: {e}")
+        return pdf_files
+
     def load_libraries(self):
-        """라이브러리를 백그라운드에서 로드"""
+        """라이브러리 백그라운드 로드"""
         def load():
             self.libs_loaded = safe_import()
             if self.libs_loaded:
@@ -114,7 +119,7 @@ class MedicalKivyTranslator(App):
                     self.translator = GoogleTranslator(source='en', target='ko')
                     Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', '준비 완료'))
                 except Exception as e:
-                    Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', f'초기화 오류: {e}'))
+                    Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', '초기화 오류: ' + str(e)))
             else:
                 Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', '라이브러리 로드 실패'))
         
@@ -134,8 +139,11 @@ class MedicalKivyTranslator(App):
     def process(self):
         try:
             input_file = os.path.join(self.download_path, self.file_spinner.text)
-            reader = PyPDF2.PdfReader(input_file)
+            reader = PdfReader(input_file)
             total_pages = len(reader.pages)
+            
+            output_filename = self.file_spinner.text.replace('.pdf', '_ko.pdf')
+            output_file = os.path.join(self.download_path, output_filename)
             
             for i, page in enumerate(reader.pages):
                 text = page.extract_text()
