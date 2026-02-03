@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import threading
 import time
@@ -11,50 +13,65 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner
 from kivy.clock import Clock
 from kivy.utils import platform
-from kivy.core.window import Window
-
-Window.rotation = 0
 
 if platform == 'android':
     try:
-        from android.permissions import request_permissions, Permission
+        from android.permissions import request_permissions, Permission, check_permission
     except ImportError:
         pass
 
-import PyPDF2
-from deep_translator import GoogleTranslator
+# [수정] import를 함수 내부로 이동 (초기화 지연)
+def safe_import():
+    try:
+        global PyPDF2, GoogleTranslator
+        import PyPDF2
+        from deep_translator import GoogleTranslator
+        return True
+    except Exception as e:
+        print(f"Import Error: {e}")
+        return False
 
 def get_korean_font():
     paths = ["/storage/emulated/0/Download/font.ttf", "/system/fonts/NanumGothic.ttf", "/system/fonts/NotoSansCJK-Regular.ttc", "/system/fonts/DroidSansFallback.ttf"]
     for p in paths:
-        if os.path.exists(p): 
-            return p
+        try:
+            if os.path.exists(p): 
+                return p
+        except:
+            continue
     return 'Roboto'
 
 KOREAN_FONT = get_korean_font()
 
 class MedicalKivyTranslator(App):
     def build(self):
+        # [추가] 안드로이드 권한 체크 및 요청
         if platform == 'android':
             try:
                 request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
+                time.sleep(0.5)  # 권한 처리 대기
             except Exception as e:
                 print(f"Permission Error: {e}")
 
         self.kmle_db = {"체포": "정지(Arrest)", "심장 체포": "심정지", "문화": "배양"}
         self.download_path = "/storage/emulated/0/Download"
-        self.translator = GoogleTranslator(source='en', target='ko')
+        self.translator = None  # [수정] 나중에 초기화
         self.is_typing = False
+        self.libs_loaded = False
         
         root = BoxLayout(orientation='vertical', padding=15, spacing=10)
 
         top_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=200, spacing=10)
+        
+        # [수정] 안전한 파일 목록 로드
+        pdf_files = ['PDF 파일 없음']
         try:
-            pdf_files = [f for f in os.listdir(self.download_path) if f.lower().endswith('.pdf')]
-        except: 
-            pdf_files = []
-        if not pdf_files: 
-            pdf_files = ['PDF 파일 없음']
+            if os.path.exists(self.download_path):
+                files = [f for f in os.listdir(self.download_path) if f.lower().endswith('.pdf')]
+                if files:
+                    pdf_files = files
+        except Exception as e:
+            print(f"File list error: {e}")
 
         self.file_spinner = Spinner(text='번역할 PDF 선택', values=pdf_files, size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp')
         self.filename_input = TextInput(text="result_KO.pdf", multiline=False, size_hint_y=None, height=85, font_name=KOREAN_FONT, font_size='17sp', padding=[15, 28, 15, 10], cursor_color=(0, 0.5, 0.8, 1))
@@ -85,9 +102,30 @@ class MedicalKivyTranslator(App):
         self.btn.bind(on_press=self.start_thread)
         root.add_widget(self.btn)
 
+        # [추가] 라이브러리 로드를 백그라운드에서 실행
+        Clock.schedule_once(lambda dt: self.load_libraries(), 0.5)
+
         return root
 
+    def load_libraries(self):
+        """라이브러리를 백그라운드에서 로드"""
+        def load():
+            self.libs_loaded = safe_import()
+            if self.libs_loaded:
+                try:
+                    self.translator = GoogleTranslator(source='en', target='ko')
+                    Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', '준비 완료'))
+                except Exception as e:
+                    Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', f'초기화 오류: {e}'))
+            else:
+                Clock.schedule_once(lambda dt: setattr(self.kor_label, 'text', '라이브러리 로드 실패'))
+        
+        threading.Thread(target=load, daemon=True).start()
+
     def start_thread(self, instance):
+        if not self.libs_loaded:
+            self.kor_label.text = "라이브러리 로딩 중... 잠시 후 다시 시도하세요"
+            return
         if self.file_spinner.text in ('번역할 PDF 선택', 'PDF 파일 없음'): 
             return
         self.btn.disabled = True
