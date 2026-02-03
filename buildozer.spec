@@ -4,11 +4,11 @@ package.name = myapp
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.0.4
+version = 1.0.5
 
 orientation = portrait
 
-requirements = python3,kivy==2.2.1,PyPDF2==3.0.1
+requirements = python3,kivy==2.2.1,PyPDF2==3.0.1,pyjnius
 
 android.api = 33
 android.minapi = 21
