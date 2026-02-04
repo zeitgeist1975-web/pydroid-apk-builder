@@ -58,7 +58,7 @@ def register_fonts():
                 continue
     return False
 
-# Spinner 드롭다운용 커스텀 옵션 (한글 폰트 적용)
+# Spinner 드롭다운용 커스텀 옵션
 class KSpinnerOption(SpinnerOption):
     pass
 
@@ -70,47 +70,82 @@ def safe_import():
     except Exception as e:
         return False, str(e)
 
-# 번역 함수 (실패 시 에러 메시지 포함)
+# 번역 함수 (상세 디버깅)
 def translate_text(text, target="ko"):
+    """
+    Google Translate 무료 API 사용
+    실패 시 상세한 에러 정보 반환
+    """
+    if not text or len(text.strip()) == 0:
+        return "[빈 텍스트]"
+    
     try:
+        # URL 생성
         base_url = "https://translate.googleapis.com/translate_a/single"
         params = {
             "client": "gtx",
             "sl": "en",
             "tl": target,
             "dt": "t",
-            "q": text
+            "q": text[:500]  # 긴 텍스트는 500자로 제한
         }
         url = base_url + "?" + urllib.parse.urlencode(params)
-        headers = {"User-Agent": "Mozilla/5.0"}
         
+        # 요청 헤더
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
+        }
+        
+        # HTTP 요청
         req = urllib.request.Request(url, headers=headers)
-        response = urllib.request.urlopen(req, timeout=10)
-        result = json.loads(response.read().decode("utf-8"))
+        response = urllib.request.urlopen(req, timeout=15)
         
+        # 응답 읽기
+        data = response.read()
+        result = json.loads(data.decode("utf-8"))
+        
+        # 번역 결과 추출
         translated = ""
-        if result and len(result) > 0:
-            for sentence in result[0]:
-                if sentence and len(sentence) > 0 and sentence[0]:
-                    translated += sentence[0]
+        if result and isinstance(result, list) and len(result) > 0:
+            sentences = result[0]
+            if sentences and isinstance(sentences, list):
+                for sentence in sentences:
+                    if sentence and isinstance(sentence, list) and len(sentence) > 0:
+                        if sentence[0]:
+                            translated += str(sentence[0])
         
-        if translated.strip():
-            return translated
+        # 결과 검증
+        if translated and len(translated.strip()) > 0:
+            return translated.strip()
         else:
-            return "[번역결과 비어있음] " + text
+            return "[번역결과없음:" + text[:30] + "...]"
             
+    except urllib.error.HTTPError as e:
+        return "[HTTP에러" + str(e.code) + ":" + text[:20] + "...]"
+    except urllib.error.URLError as e:
+        return "[네트워크에러:" + str(e.reason)[:30] + "]"
+    except json.JSONDecodeError as e:
+        return "[JSON파싱실패:" + text[:20] + "...]"
     except Exception as e:
-        error_msg = str(e)[:70]
-        return "[번역실패: " + error_msg + "] " + text
+        err_type = type(e).__name__
+        err_msg = str(e)[:40]
+        return "[" + err_type + ":" + err_msg + "]"
 
 
 class MedicalKivyTranslator(App):
     def build(self):
+        # 의학용어 사전 (KMLE 기반)
         self.kmle_db = {
-            "체포": "정지(Arrest)", 
-            "심장 체포": "심정지", 
-            "문화": "배양"
+            "체포": "정지(Arrest)",
+            "심장 체포": "심정지",
+            "심장체포": "심정지",
+            "문화": "배양(Culture)",
+            "문화 배양": "배양",
+            "체온": "체온",
+            "압력": "혈압",
+            "혈압": "혈압"
         }
+        
         self.download_path = "/storage/emulated/0/Download"
         self.is_typing = False
         self.libs_loaded = False
@@ -126,19 +161,18 @@ class MedicalKivyTranslator(App):
         # 초기 텍스트
         init_text = "초기화 중..." if self.is_pydroid else "권한 요청 중..."
         
-        # Spinner (파일 선택) - 20% 감소
+        # Spinner (파일 선택)
         self.file_spinner = Spinner(
             text=init_text,
             values=["대기"],
             size_hint_y=None,
             height=85,
             font_name=fn,
-            font_size=sp(19),  # 24 → 19
+            font_size=sp(19),
             option_cls=KSpinnerOption
         )
-        # 드롭다운 항목에도 폰트 적용
         self.file_spinner.option_cls.font_name = fn
-        self.file_spinner.option_cls.font_size = sp(18)  # 22 → 18
+        self.file_spinner.option_cls.font_size = sp(18)
         self.file_spinner.bind(on_press=self.refresh_files)
         
         # 파일명 입력
@@ -148,7 +182,7 @@ class MedicalKivyTranslator(App):
             size_hint_y=None,
             height=85,
             font_name=fn,
-            font_size=sp(18),  # 22 → 18
+            font_size=sp(18),
             padding=[15, 28, 15, 10]
         )
         
@@ -163,7 +197,7 @@ class MedicalKivyTranslator(App):
             text="0.0%",
             size_hint_x=0.25,
             font_name=fn,
-            font_size=sp(22),  # 28 → 22
+            font_size=sp(22),
             bold=True
         )
         pb_box.add_widget(self.pb)
@@ -174,7 +208,7 @@ class MedicalKivyTranslator(App):
         self.eng_label = Label(
             text="",
             size_hint_y=None,
-            font_size=sp(14),  # 18 → 14
+            font_size=sp(14),
             font_name=fn,
             halign="left",
             valign="top",
@@ -190,7 +224,7 @@ class MedicalKivyTranslator(App):
         self.kor_label = Label(
             text="로딩 중...",
             size_hint_y=None,
-            font_size=sp(14),  # 18 → 14
+            font_size=sp(14),
             font_name=fn,
             halign="left",
             valign="top",
@@ -208,7 +242,7 @@ class MedicalKivyTranslator(App):
             size_hint_y=None,
             height=95,
             font_name=fn,
-            font_size=sp(21),  # 26 → 21
+            font_size=sp(21),
             background_color=(0, 0.5, 0.9, 1)
         )
         self.btn.bind(on_press=self.start_thread)
@@ -234,7 +268,7 @@ class MedicalKivyTranslator(App):
                 request_permissions(perms)
                 Clock.schedule_once(lambda dt: self.check_permissions(), 3)
             except Exception as e:
-                self.kor_label.text = "권한요청 오류"
+                self.kor_label.text = "권한요청 오류: " + str(e)[:50]
                 Clock.schedule_once(lambda dt: self.init_app(), 1)
         else:
             Clock.schedule_once(lambda dt: self.init_app(), 0.5)
@@ -251,7 +285,7 @@ class MedicalKivyTranslator(App):
             self.kor_label.text = "권한 승인됨. 라이브러리 로딩 중..."
             Clock.schedule_once(lambda dt: self.init_app(), 0.5)
         else:
-            self.kor_label.text = "권한 거부됨. 설정에서 저장소 권한 허용 필요"
+            self.kor_label.text = "권한 거부됨"
             self.file_spinner.text = "권한 없음"
 
     def init_app(self):
@@ -305,10 +339,9 @@ class MedicalKivyTranslator(App):
         if files:
             self.file_spinner.text = "PDF 선택"
             self.file_spinner.values = files
-            # values 변경 후에도 드롭다운 폰트 유지
             fn = "KoreanFont" if self.font_loaded else "Roboto"
             self.file_spinner.option_cls.font_name = fn
-            self.file_spinner.option_cls.font_size = sp(18)  # 22 → 18
+            self.file_spinner.option_cls.font_size = sp(18)
             
             n = str(len(files))
             t1 = "준비 완료! " + n + "개 PDF 발견"
@@ -319,33 +352,23 @@ class MedicalKivyTranslator(App):
             self.file_spinner.values = ["탭하여 새로고침"]
             fn = "KoreanFont" if self.font_loaded else "Roboto"
             self.file_spinner.option_cls.font_name = fn
-            self.file_spinner.option_cls.font_size = sp(18)  # 22 → 18
+            self.file_spinner.option_cls.font_size = sp(18)
             
-            msg1 = "PDF 파일을 찾을 수 없습니다"
-            msg2 = "Download 폴더에 PDF를 넣고"
-            msg3 = "새로고침하세요"
-            self.kor_label.text = msg1 + chr(10) + msg2 + chr(10) + msg3
+            self.kor_label.text = "PDF 파일 없음" + chr(10) + "Download 폴더에 PDF 추가"
 
     def start_thread(self, instance):
         if not self.libs_loaded:
-            self.kor_label.text = "라이브러리 로드가 안 됐습니다"
+            self.kor_label.text = "라이브러리 로드 안됨"
             return
         
-        check_texts = [
-            "PDF 선택",
-            "초기화 중...",
-            "권한 요청 중...",
-            "PDF 없음",
-            "오류",
-            "권한 없음"
-        ]
+        check_texts = ["PDF 선택", "초기화 중...", "권한 요청 중...", "PDF 없음", "오류", "권한 없음"]
         if self.file_spinner.text in check_texts:
-            self.kor_label.text = "먼저 PDF 파일을 선택하세요"
+            self.kor_label.text = "먼저 PDF 선택"
             return
         
         self.btn.disabled = True
         self.eng_label.text = ""
-        self.kor_label.text = "번역 시작 중..."
+        self.kor_label.text = "번역 시작..."
         threading.Thread(target=self.process, daemon=True).start()
 
     def process(self):
@@ -356,31 +379,48 @@ class MedicalKivyTranslator(App):
             
             for i, page in enumerate(reader.pages):
                 txt = page.extract_text()
-                if not txt:
+                if not txt or len(txt.strip()) == 0:
                     continue
                     
-                clean = txt.replace(chr(10), " ")
-                sents = [s.strip() for s in clean.split(". ") if len(s) > 5]
+                # 텍스트 정리
+                clean = txt.replace(chr(10), " ").replace("  ", " ")
+                sents = [s.strip() for s in clean.split(". ") if len(s.strip()) > 3]
+                
+                if not sents:
+                    continue
                 
                 for j, sent in enumerate(sents):
+                    # 번역 시도
                     trans = translate_text(sent, "ko")
                     
-                    # 의학용어 교정
-                    for w, c in self.kmle_db.items():
-                        trans = trans.replace(w, c)
+                    # KMLE 의학용어 교정 (대소문자 무관)
+                    trans_lower = trans.lower()
+                    for wrong, correct in self.kmle_db.items():
+                        if wrong in trans_lower:
+                            # 원본 케이스 유지하며 교체
+                            trans = trans.replace(wrong, correct)
+                            trans = trans.replace(wrong.title(), correct)
+                            trans = trans.replace(wrong.upper(), correct)
                     
-                    prog = ((i / total) + (j / len(sents) / total)) * 100
+                    # 진행률 계산
+                    if total > 0 and len(sents) > 0:
+                        prog = ((i / total) + (j / len(sents) / total)) * 100
+                    else:
+                        prog = 0
+                    
                     self.is_typing = True
                     Clock.schedule_once(
                         lambda dt, s=sent, t=trans, p=prog: self.type_sync(s, t, p)
                     )
+                    
+                    # 타이핑 완료 대기
                     while self.is_typing:
                         time.sleep(0.005)
             
             Clock.schedule_once(lambda dt: self.complete())
             
         except Exception as e:
-            err = "오류: " + str(e)[:100]
+            err = "처리 오류: " + type(e).__name__ + " - " + str(e)[:80]
             Clock.schedule_once(lambda dt: setattr(self.kor_label, "text", err))
             Clock.schedule_once(lambda dt: setattr(self.btn, "disabled", False))
 
@@ -389,12 +429,14 @@ class MedicalKivyTranslator(App):
         e_text = "• " + eng + nl + nl
         k_text = "• " + kor + nl + nl
         
+        # 영문 타이핑
         for i, c in enumerate(e_text):
             Clock.schedule_once(
                 lambda dt, ch=c: self.update_ui("eng", ch),
                 i * 0.001
             )
         
+        # 한글 타이핑 (영문 완료 후)
         delay = len(e_text) * 0.001
         for i, c in enumerate(k_text):
             last = (i == len(k_text) - 1)
@@ -416,8 +458,9 @@ class MedicalKivyTranslator(App):
         
         label.text += char
         
-        if len(label.text) > 5000:
-            label.text = label.text[-4500:]
+        # 메모리 관리
+        if len(label.text) > 6000:
+            label.text = label.text[-5500:]
         
         label.height = max(label.texture_size[1], scroll.height)
         scroll.scroll_y = 0
