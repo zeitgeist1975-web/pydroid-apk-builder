@@ -4,7 +4,7 @@ package.name = myapp
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.1.0
+version = 1.2.0
 
 orientation = portrait
 
