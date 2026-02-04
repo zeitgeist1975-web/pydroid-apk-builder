@@ -1,4 +1,3 @@
-# main.py
 import os
 import sys
 import threading
@@ -6,6 +5,7 @@ import time
 import json
 import urllib.request
 import urllib.parse
+import ssl
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -20,12 +20,10 @@ from kivy.utils import platform
 from kivy.core.text import LabelBase
 from kivy.metrics import sp
 
-# 파이드로이드3 환경 감지
 def is_pydroid3():
     exe = (sys.executable or "").lower()
     return ("pydroid3" in exe) or ("ru.iiec.pydroid3" in exe)
 
-# APK 환경에서만 권한 관련 import
 ANDROID_PERMISSIONS = False
 Environment = None
 Build = None
@@ -40,7 +38,6 @@ if platform == "android" and not is_pydroid3():
     except Exception:
         pass
 
-# 한글 폰트 등록
 def register_fonts():
     paths = [
         "/system/fonts/NanumGothic.ttf",
@@ -58,7 +55,6 @@ def register_fonts():
                 continue
     return False
 
-# Spinner 드롭다운용 커스텀 옵션
 class KSpinnerOption(SpinnerOption):
     pass
 
@@ -70,41 +66,35 @@ def safe_import():
     except Exception as e:
         return False, str(e)
 
-# 번역 함수 (상세 디버깅)
 def translate_text(text, target="ko"):
-    """
-    Google Translate 무료 API 사용
-    실패 시 상세한 에러 정보 반환
-    """
     if not text or len(text.strip()) == 0:
         return "[빈 텍스트]"
     
     try:
-        # URL 생성
         base_url = "https://translate.googleapis.com/translate_a/single"
         params = {
             "client": "gtx",
             "sl": "en",
             "tl": target,
             "dt": "t",
-            "q": text[:500]  # 긴 텍스트는 500자로 제한
+            "q": text[:500]
         }
         url = base_url + "?" + urllib.parse.urlencode(params)
         
-        # 요청 헤더
         headers = {
             "User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
         }
         
-        # HTTP 요청
-        req = urllib.request.Request(url, headers=headers)
-        response = urllib.request.urlopen(req, timeout=15)
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         
-        # 응답 읽기
+        req = urllib.request.Request(url, headers=headers)
+        response = urllib.request.urlopen(req, timeout=15, context=ssl_context)
+        
         data = response.read()
         result = json.loads(data.decode("utf-8"))
         
-        # 번역 결과 추출
         translated = ""
         if result and isinstance(result, list) and len(result) > 0:
             sentences = result[0]
@@ -114,7 +104,6 @@ def translate_text(text, target="ko"):
                         if sentence[0]:
                             translated += str(sentence[0])
         
-        # 결과 검증
         if translated and len(translated.strip()) > 0:
             return translated.strip()
         else:
@@ -134,7 +123,6 @@ def translate_text(text, target="ko"):
 
 class MedicalKivyTranslator(App):
     def build(self):
-        # 의학용어 사전 (KMLE 기반)
         self.kmle_db = {
             "체포": "정지(Arrest)",
             "심장 체포": "심정지",
@@ -152,16 +140,13 @@ class MedicalKivyTranslator(App):
         self.font_loaded = register_fonts()
         self.is_pydroid = is_pydroid3()
         
-        # 폰트 설정
         fn = "KoreanFont" if self.font_loaded else "Roboto"
         
         root = BoxLayout(orientation="vertical", padding=15, spacing=10)
         top_layout = BoxLayout(orientation="vertical", size_hint_y=None, height=200, spacing=10)
         
-        # 초기 텍스트
         init_text = "초기화 중..." if self.is_pydroid else "권한 요청 중..."
         
-        # Spinner (파일 선택)
         self.file_spinner = Spinner(
             text=init_text,
             values=["대기"],
@@ -175,7 +160,6 @@ class MedicalKivyTranslator(App):
         self.file_spinner.option_cls.font_size = sp(18)
         self.file_spinner.bind(on_press=self.refresh_files)
         
-        # 파일명 입력
         self.filename_input = TextInput(
             text="result_KO.pdf",
             multiline=False,
@@ -190,7 +174,6 @@ class MedicalKivyTranslator(App):
         top_layout.add_widget(self.filename_input)
         root.add_widget(top_layout)
 
-        # 진행률 표시
         pb_box = BoxLayout(orientation="horizontal", size_hint_y=None, height=55, spacing=10)
         self.pb = ProgressBar(max=100, value=0, size_hint_y=None, height=45)
         self.percent_label = Label(
@@ -204,7 +187,6 @@ class MedicalKivyTranslator(App):
         pb_box.add_widget(self.percent_label)
         root.add_widget(pb_box)
 
-        # 영문 표시 영역
         self.eng_label = Label(
             text="",
             size_hint_y=None,
@@ -220,7 +202,6 @@ class MedicalKivyTranslator(App):
         self.eng_scroll.add_widget(self.eng_label)
         root.add_widget(self.eng_scroll)
         
-        # 한글 번역 표시 영역
         self.kor_label = Label(
             text="로딩 중...",
             size_hint_y=None,
@@ -236,7 +217,6 @@ class MedicalKivyTranslator(App):
         self.kor_scroll.add_widget(self.kor_label)
         root.add_widget(self.kor_scroll)
 
-        # 번역 시작 버튼
         self.btn = Button(
             text="의학 번역 시작",
             size_hint_y=None,
@@ -248,7 +228,6 @@ class MedicalKivyTranslator(App):
         self.btn.bind(on_press=self.start_thread)
         root.add_widget(self.btn)
 
-        # 초기화
         if self.is_pydroid:
             Clock.schedule_once(lambda dt: self.init_app(), 0.3)
         else:
@@ -382,7 +361,6 @@ class MedicalKivyTranslator(App):
                 if not txt or len(txt.strip()) == 0:
                     continue
                     
-                # 텍스트 정리
                 clean = txt.replace(chr(10), " ").replace("  ", " ")
                 sents = [s.strip() for s in clean.split(". ") if len(s.strip()) > 3]
                 
@@ -390,19 +368,15 @@ class MedicalKivyTranslator(App):
                     continue
                 
                 for j, sent in enumerate(sents):
-                    # 번역 시도
                     trans = translate_text(sent, "ko")
                     
-                    # KMLE 의학용어 교정 (대소문자 무관)
                     trans_lower = trans.lower()
                     for wrong, correct in self.kmle_db.items():
                         if wrong in trans_lower:
-                            # 원본 케이스 유지하며 교체
                             trans = trans.replace(wrong, correct)
                             trans = trans.replace(wrong.title(), correct)
                             trans = trans.replace(wrong.upper(), correct)
                     
-                    # 진행률 계산
                     if total > 0 and len(sents) > 0:
                         prog = ((i / total) + (j / len(sents) / total)) * 100
                     else:
@@ -413,7 +387,6 @@ class MedicalKivyTranslator(App):
                         lambda dt, s=sent, t=trans, p=prog: self.type_sync(s, t, p)
                     )
                     
-                    # 타이핑 완료 대기
                     while self.is_typing:
                         time.sleep(0.005)
             
@@ -429,14 +402,12 @@ class MedicalKivyTranslator(App):
         e_text = "• " + eng + nl + nl
         k_text = "• " + kor + nl + nl
         
-        # 영문 타이핑
         for i, c in enumerate(e_text):
             Clock.schedule_once(
                 lambda dt, ch=c: self.update_ui("eng", ch),
                 i * 0.001
             )
         
-        # 한글 타이핑 (영문 완료 후)
         delay = len(e_text) * 0.001
         for i, c in enumerate(k_text):
             last = (i == len(k_text) - 1)
@@ -458,7 +429,6 @@ class MedicalKivyTranslator(App):
         
         label.text += char
         
-        # 메모리 관리
         if len(label.text) > 6000:
             label.text = label.text[-5500:]
         
