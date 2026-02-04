@@ -4,18 +4,18 @@ package.name = myapp
 package.domain = org.example
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.0.5
+version = 1.0.7
 
 orientation = portrait
 
 requirements = python3,kivy==2.2.1,PyPDF2==3.0.1,pyjnius
 
-android.api = 33
+android.api = 29
 android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 android.accept_sdk_license = True
-android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
 fullscreen = 0
 
