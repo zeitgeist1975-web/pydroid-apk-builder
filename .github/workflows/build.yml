@@ -55,13 +55,13 @@ jobs:
           buildozer android clean || true
           
           sed -i 's|^requirements =.*|requirements = python3,kivy==2.2.1,PyPDF2==3.0.1,pyjnius|' buildozer.spec
-          sed -i 's/^[# ]*version =.*/version = 1.0.7/' buildozer.spec
-          sed -i 's/^[# ]*android.api =.*/android.api = 29/' buildozer.spec
+          sed -i 's/^[# ]*version =.*/version = 1.0.9/' buildozer.spec
+          sed -i 's/^[# ]*android.api =.*/android.api = 28/' buildozer.spec
           sed -i 's/^[# ]*orientation =.*/orientation = portrait/' buildozer.spec
           sed -i 's/^[# ]*fullscreen =.*/fullscreen = 0/' buildozer.spec
           sed -i 's/^[# ]*android.archs =.*/android.archs = arm64-v8a/' buildozer.spec
           sed -i 's/^[# ]*android.accept_sdk_license =.*/android.accept_sdk_license = True/' buildozer.spec
-          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE/' buildozer.spec
+          sed -i 's/^[# ]*android.permissions =.*/android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE/' buildozer.spec
           
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:.
           yes y | buildozer -v android debug
@@ -69,5 +69,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: my-app-apk-v1.0.7
+          name: myapp-v1.0.9
           path: bin/*.apk
