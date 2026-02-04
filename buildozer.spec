@@ -4,7 +4,7 @@ package.name = medicaltranslator
 package.domain = org.medical
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.3.0
+version = 1.4.0
 
 orientation = portrait
 
