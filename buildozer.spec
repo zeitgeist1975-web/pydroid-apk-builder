@@ -1,10 +1,10 @@
 [app]
-title = MyApp
-package.name = myapp
-package.domain = org.example
+title = Medical Translator
+package.name = medicaltranslator
+package.domain = org.medical
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.2.0
+version = 1.3.0
 
 orientation = portrait
 
