@@ -17,11 +17,9 @@ from kivy.clock import Clock
 from kivy.utils import platform
 from kivy.core.text import LabelBase
 
-# 파이드로이드3 환경 감지
 def is_pydroid3():
     return 'pydroid3' in sys.executable.lower() or 'ru.iiec.pydroid3' in sys.executable
 
-# APK 환경에서만 권한 관련 import
 if platform == 'android' and not is_pydroid3():
     try:
         from android.permissions import request_permissions, Permission, check_permission
@@ -89,7 +87,7 @@ class MedicalKivyTranslator(App):
         
         fn = 'KoreanFont' if self.font_loaded else 'Roboto'
         
-        init_text = 'Initializing...' if self.is_pydroid else 'Requesting permissions...'
+        init_text = 'Init...' if self.is_pydroid else 'Requesting...'
         self.file_spinner = Spinner(text=init_text, values=['Wait'], 
                                    size_hint_y=None, height=85, font_name=fn, font_size='17sp')
         self.file_spinner.bind(on_press=self.refresh_files)
@@ -125,7 +123,7 @@ class MedicalKivyTranslator(App):
         self.kor_scroll.add_widget(self.kor_label)
         root.add_widget(self.kor_scroll)
 
-        self.btn = Button(text="Start Translation", size_hint_y=None, height=95, 
+        self.btn = Button(text="Start", size_hint_y=None, height=95, 
                          font_name=fn, font_size='20sp', background_color=(0, 0.5, 0.9, 1))
         self.btn.bind(on_press=self.start_thread)
         root.add_widget(self.btn)
@@ -142,41 +140,30 @@ class MedicalKivyTranslator(App):
             perms = [Permission.INTERNET, Permission.READ_EXTERNAL_STORAGE, 
                     Permission.WRITE_EXTERNAL_STORAGE]
             
-            try:
-                if Build and Build.VERSION.SDK_INT >= 30:
-                    perms.append(Permission.MANAGE_EXTERNAL_STORAGE)
-            except:
-                pass
-            
-            self.kor_label.text = "Requesting storage permissions..."
+            self.kor_label.text = "Requesting storage..."
             
             try:
                 request_permissions(perms)
-                Clock.schedule_once(lambda dt: self.check_permissions(), 4)
-            except Exception as e:
-                self.kor_label.text = "Permission request failed"
+                Clock.schedule_once(lambda dt: self.check_permissions(), 3)
+            except:
                 Clock.schedule_once(lambda dt: self.init_app(), 1)
         else:
             Clock.schedule_once(lambda dt: self.init_app(), 0.5)
 
     def check_permissions(self):
-        has_perm = False
+        has_perm = True
         
         if ANDROID_PERMISSIONS:
             try:
                 has_perm = check_permission(Permission.READ_EXTERNAL_STORAGE)
             except:
                 has_perm = True
-        else:
-            has_perm = True
         
         if has_perm:
-            self.kor_label.text = "Permissions OK. Loading library..."
+            self.kor_label.text = "Permission OK. Loading..."
             Clock.schedule_once(lambda dt: self.init_app(), 0.5)
         else:
-            msg1 = "Permission denied!"
-            msg2 = "Enable Storage in Settings"
-            self.kor_label.text = msg1 + chr(10) + msg2
+            self.kor_label.text = "Permission denied"
             self.file_spinner.text = 'No Permission'
 
     def init_app(self):
@@ -188,17 +175,17 @@ class MedicalKivyTranslator(App):
 
     def after_init(self, success):
         if success:
-            self.kor_label.text = "Library loaded. Searching PDFs..."
+            self.kor_label.text = "Loading complete. Searching..."
             Clock.schedule_once(lambda dt: self.refresh_files(None), 0.5)
         else:
-            self.file_spinner.text = 'Library Error'
-            self.kor_label.text = 'PyPDF2 load failed'
+            self.file_spinner.text = 'Error'
+            self.kor_label.text = 'PyPDF2 failed'
 
     def refresh_files(self, instance):
         def load():
             files = []
             paths = ["/storage/emulated/0/Download", "/sdcard/Download", 
-                    "/storage/sdcard0/Download"]
+                    "/storage/sdcard0/Download", "/mnt/sdcard/Download"]
             found = None
             
             for p in paths:
@@ -227,21 +214,22 @@ class MedicalKivyTranslator(App):
             self.file_spinner.text = 'Select PDF'
             self.file_spinner.values = files
             n = str(len(files))
-            t1 = "Ready! Found " + n + " PDFs"
+            t1 = "Ready! " + n + " PDFs found"
             t2 = "Path: " + self.download_path
             self.kor_label.text = t1 + chr(10) + t2
         else:
             self.file_spinner.text = 'No PDF'
             self.file_spinner.values = ['Tap to refresh']
-            msg1 = "No PDF found"
-            msg2 = "Check /Download/ folder"
-            self.kor_label.text = msg1 + chr(10) + msg2
+            msg1 = "No PDF in Download folder"
+            msg2 = "Put PDF files in:"
+            msg3 = "/Download/"
+            self.kor_label.text = msg1 + chr(10) + msg2 + chr(10) + msg3
 
     def start_thread(self, instance):
         if not self.libs_loaded:
-            self.kor_label.text = "Library not loaded"
+            self.kor_label.text = "Library error"
             return
-        if self.file_spinner.text in ('Select PDF', 'Initializing...', 'Requesting permissions...', 'No PDF', 'Library Error', 'No Permission'):
+        if self.file_spinner.text in ('Select PDF', 'Init...', 'Requesting...', 'No PDF', 'Error', 'No Permission'):
             self.kor_label.text = "Select PDF first"
             return
         
@@ -307,7 +295,7 @@ class MedicalKivyTranslator(App):
 
     def complete(self):
         self.btn.disabled = False
-        self.btn.text = "Complete!"
+        self.btn.text = "Done!"
         self.pb.value = 100
         self.percent_label.text = "100.0%"
 
